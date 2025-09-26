@@ -1,0 +1,124 @@
+/* Dark Theme Enhancements */
+
+/* Card styling in dark mode */
+.dark .bg-white {
+  @apply bg-gray-800;
+}
+
+.dark .bg-gray-50 {
+  @apply bg-gray-800;
+}
+
+.dark .bg-gray-100 {
+  @apply bg-gray-700;
+}
+
+.dark .bg-gray-200 {
+  @apply bg-gray-600;
+}
+
+/* Card components - specific overrides */
+.dark [class*="card"],
+.dark [class*="Card"] {
+  @apply bg-gray-800 border-gray-700;
+}
+
+.dark .mui-card {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Table styling in dark mode */
+.dark table {
+  @apply bg-gray-800;
+}
+
+.dark table thead {
+  @apply bg-gray-700;
+}
+
+.dark table tbody tr {
+  @apply bg-gray-800 border-gray-700;
+}
+
+.dark table tbody tr:nth-child(even) {
+  @apply bg-gray-750;
+}
+
+.dark table th,
+.dark table td {
+  @apply border-gray-700 text-gray-200;
+}
+
+.dark table th {
+  @apply text-gray-300 font-medium;
+}
+
+/* Input and form elements */
+.dark input[type="text"],
+.dark input[type="email"],
+.dark input[type="password"],
+.dark input[type="search"],
+.dark textarea,
+.dark select {
+  @apply bg-gray-700 border-gray-600 text-gray-200;
+}
+
+.dark input[type="text"]:focus,
+.dark input[type="email"]:focus,
+.dark input[type="password"]:focus,
+.dark input[type="search"]:focus,
+.dark textarea:focus,
+.dark select:focus {
+  @apply bg-gray-600 border-gray-500 ring-gray-500;
+}
+
+/* Border colors */
+.dark .border,
+.dark .border-gray-200 {
+  @apply border-gray-700;
+}
+
+.dark .border-gray-300 {
+  @apply border-gray-600;
+}
+
+/* Shadow adjustments */
+.dark .shadow,
+.dark .shadow-sm,
+.dark .shadow-md,
+.dark .shadow-lg {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05), 
+              0 1px 3px 0 rgba(0, 0, 0, 0.4),
+              0 1px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Custom card backgrounds for better contrast */
+.dark .card-bg {
+  @apply bg-gray-800/90 backdrop-blur-sm border border-gray-700/50;
+}
+
+.dark .elevated-card {
+  @apply bg-gray-800 border border-gray-700 shadow-xl;
+}
+
+/* Dropdown and modal backgrounds */
+.dark [role="dialog"],
+.dark [role="menu"],
+.dark [role="listbox"] {
+  @apply bg-gray-800 border-gray-700;
+}
+
+/* Custom gray scale for better dark mode */
+@layer utilities {
+  .dark .bg-gray-750 {
+    background-color: rgb(55 65 81 / 0.8);
+  }
+  
+  .dark .bg-gray-850 {
+    background-color: rgb(31 41 55 / 0.9);
+  }
+  
+  .dark .text-gray-150 {
+    color: rgb(243 244 246 / 0.9);
+  }
+}
