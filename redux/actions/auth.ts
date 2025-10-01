@@ -11,7 +11,8 @@ export const login = (identifier: string, password: string) => async (dispatch: 
     });
     const data = await res.json();
     if (!res.ok || data.error) throw new Error(data.error || 'Login failed');
-    localStorage.setItem('token', data.token);
+    console.log('Data received directly from server:', data);
+    localStorage.setItem('token', data.token.trim());
     localStorage.setItem('user', JSON.stringify(data.user));
     localStorage.setItem('userRole', data.user.role);
     localStorage.setItem('userName', data.user.name);
