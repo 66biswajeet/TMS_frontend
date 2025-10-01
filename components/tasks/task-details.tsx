@@ -41,7 +41,7 @@ interface Task {
   Scope: string;
   Status: string;
   Deadline: string;
-  BranchName: string;
+  BranchNames?: string[];
   Priority: string;
   CreatedAt: string;
   CreatedBy: string;
@@ -261,42 +261,23 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     }
   };
 
-  // const approveTask = async () => {
-  //   try {
-  //     setSubmitting(true);
-  //     await api.post(`/tasks/approve`, {
-  //       taskId: taskId,
-  //     });
-
-  //     // Refresh task data to show updated status
-  //     window.location.reload();
-  //   } catch (error) {
-  //     console.error("Failed to approve task:", error);
-  //     showError("Failed to approve task. Please try again.");
-  //   } finally {
-  //     setSubmitting(false);
-  //   }
-  // };
-  // In task-details.tsx
-
   const approveTask = async () => {
     try {
       setSubmitting(true);
-
-      // Temporarily change this URL to call our new test route
-      await api.post(`/tasks/test-approve`, {
+      await api.post(`/tasks/approve`, {
         taskId: taskId,
       });
 
-      // For now, just show a success message for the test
-      showSuccess("Test request sent! Check backend console.");
+      // Refresh task data to show updated status
+      window.location.reload();
     } catch (error) {
-      console.error("Failed to call test route:", error);
-      showError("Test request failed. Check console.");
+      console.error("Failed to approve task:", error);
+      showError("Failed to approve task. Please try again.");
     } finally {
       setSubmitting(false);
     }
   };
+
   const rejectTask = async () => {
     if (!reviewReason.trim()) {
       showWarning("Please provide a reason for rejection.");
@@ -402,28 +383,25 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const canApproveTask = () => {
     if (!currentUser || !task) return false;
 
-    // Rule 1: Task must always be in 'submitted' status to be approved.
+    // Rule 1: Users assigned to the task cannot approve it
+    const isAssigned = assignees.some(
+      (assignee) => assignee.email === currentUser.email
+    );
+    if (isAssigned) return false;
+
+    // Rule 2: Only supervisors (branch managers, area managers, auditors, management) can approve
+    const approverRoles = [
+      "branch_manager",
+      "area_manager",
+      "auditor",
+      "management",
+    ];
+    if (!approverRoles.includes(currentUser.role)) return false;
+
+    // Rule 3: Task must be submitted to be approved
     if (task.Status !== "submitted") return false;
 
-    // Rule 2: If the user has the 'management' role, they can ALWAYS approve a submitted task.
-    // This rule gives the Super Admin priority.
-    if (currentUser.role === "management") {
-      return true;
-    }
-
-    // Rule 3: For all other roles (like branch_manager), apply the original logic.
-    // They cannot approve if they are assigned to the task.
-    const isAssigned = assignees.some(
-      (assignee) =>
-        assignee.email?.toLowerCase() === currentUser.email?.toLowerCase()
-    );
-    if (isAssigned) {
-      return false;
-    }
-
-    // Check if they are a supervisor (but not a super admin, since that's already handled).
-    const otherApproverRoles = ["branch_manager", "area_manager", "auditor"];
-    return otherApproverRoles.includes(currentUser.role);
+    return true;
   };
 
   const formatDeadline = (deadline: string) => {
@@ -501,21 +479,9 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     task.Status === "submitted" || task.Status === "approved" || isExpired;
 
   // Check if current user is assigned to this task (only assignees can edit checklist)
-  // const canEditChecklist =
-  //   assignees.some((assignee) => assignee.email === currentUser?.email) &&
-  //   !isLocked;
-
-  // REPLACE IT WITH THIS
   const canEditChecklist =
-    (assignees.some(
-      (assignee) =>
-        assignee.email?.toLowerCase() === currentUser?.email?.toLowerCase()
-    ) ||
-      currentUser?.role === "management") &&
+    assignees.some((assignee) => assignee.email === currentUser?.email) &&
     !isLocked;
-
-  // console.log("Current User:", currentUser);
-  // console.log("Assignees Array:", assignees);
 
   return (
     <div className="space-y-6">
@@ -607,7 +573,10 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
               <div>
                 <p className="text-sm font-medium">Branch</p>
                 <p className="text-sm text-muted-foreground">
-                  {task.BranchName}
+                  {Array.isArray(task.BranchNames) &&
+                  task.BranchNames.length > 0
+                    ? task.BranchNames.join(", ")
+                    : task.BranchNames || task.BranchNames || "Unassigned"}
                 </p>
               </div>
             </div>
@@ -710,11 +679,52 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                 // REPLACE IT WITH THIS
                 checklistItems.map((item, index) => (
                   <div key={item.TaskChecklistItemId} className="space-y-3">
-                    <ChecklistItemComponent
-                      item={item}
-                      canEdit={canEditChecklist}
-                      onUpdate={updateChecklistItem}
-                    />
+                    <div className="flex items-start gap-3">
+                      <Checkbox
+                        id={`item-${item.TaskChecklistItemId}`}
+                        checked={item.Completed}
+                        onCheckedChange={(checked) =>
+                          updateChecklistItem(
+                            item.TaskChecklistItemId,
+                            checked as boolean,
+                            item.Notes
+                          )
+                        }
+                        disabled={!canEditChecklist}
+                      />
+                      <div className="flex-1 space-y-2">
+                        <label
+                          htmlFor={`item-${item.TaskChecklistItemId}`}
+                          className={`text-sm font-medium cursor-pointer ${
+                            item.Completed
+                              ? "line-through text-muted-foreground"
+                              : ""
+                          }`}
+                        >
+                          {item.Title}
+                        </label>
+                        {item.Notes && (
+                          <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                            <MessageSquare className="h-3 w-3 inline mr-1" />
+                            {item.Notes}
+                          </p>
+                        )}
+                        <Textarea
+                          placeholder="Add notes for this item..."
+                          value={item.Notes || ""}
+                          onChange={(e) =>
+                            updateChecklistItem(
+                              item.TaskChecklistItemId,
+                              item.Completed,
+                              e.target.value
+                            )
+                          }
+                          className="text-sm"
+                          rows={2}
+                          disabled={!canEditChecklist}
+                        />
+                      </div>
+                    </div>
                     {index < checklistItems.length - 1 && <Separator />}
                   </div>
                 ))
