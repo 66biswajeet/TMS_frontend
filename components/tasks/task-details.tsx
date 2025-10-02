@@ -79,6 +79,68 @@ interface Assignee {
   email: string;
 }
 
+// Type definition for the component's props
+interface ChecklistItemComponentProps {
+  item: ChecklistItem;
+  canEdit: boolean;
+  onUpdate: (itemId: string, completed: boolean, notes?: string) => void;
+}
+
+// The new component for rendering a single checklist item
+const ChecklistItemComponent = ({
+  item,
+  canEdit,
+  onUpdate,
+}: ChecklistItemComponentProps) => {
+  // 1. Use local state to manage the notes for this specific item
+  const [notes, setNotes] = useState(item.Notes || "");
+
+  // 2. This function saves the notes when the user clicks away from the textarea
+  const handleSaveNotes = () => {
+    // Only call the API if the notes have actually changed
+    if (notes !== (item.Notes || "")) {
+      onUpdate(item.TaskChecklistItemId, item.Completed, notes);
+    }
+  };
+
+  // 3. This function updates the checkbox status immediately
+  const handleCheckedChange = (checked: boolean) => {
+    onUpdate(item.TaskChecklistItemId, checked, item.Notes);
+  };
+
+  return (
+    <div className="flex items-start gap-3">
+      <Checkbox
+        id={`item-${item.TaskChecklistItemId}`}
+        checked={item.Completed}
+        onCheckedChange={handleCheckedChange}
+        disabled={!canEdit}
+      />
+      <div className="flex-1 space-y-2">
+        <label
+          htmlFor={`item-${item.TaskChecklistItemId}`}
+          className={`text-sm font-medium cursor-pointer ${
+            item.Completed ? "line-through text-muted-foreground" : ""
+          }`}
+        >
+          {item.Title}
+        </label>
+        <Textarea
+          placeholder="Add notes for this item..."
+          value={notes}
+          // The onChange handler now ONLY updates local state. No API call here.
+          onChange={(e) => setNotes(e.target.value)}
+          // The onBlur handler calls the API to save the data.
+          onBlur={handleSaveNotes}
+          className="text-sm"
+          rows={2}
+          disabled={!canEdit}
+        />
+      </div>
+    </div>
+  );
+};
+
 export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [task, setTask] = useState<Task | null>(null);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
@@ -87,6 +149,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newItemTitle, setNewItemTitle] = useState("");
 
   // Get current user from Redux state
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -169,6 +232,39 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
         error.response?.data?.error ||
         "Failed to update checklist item. Please try again.";
       showError(errorMessage);
+    }
+  };
+
+  const handleAddChecklistItem = async () => {
+    try {
+      const token = localStorage.getItem("token"); // Or however you're storing it
+
+      const response = await api.post(
+        `/tasks/${taskId}/checklist`,
+        {
+          title: newItemTitle,
+          description: "",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      showSuccess(response.data.message);
+      setNewItemTitle("");
+
+      // Refresh checklist
+      const checklistResponse = await api.get(`/tasks/${taskId}/checklist`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setChecklistItems(checklistResponse.data.items || []);
+    } catch (error) {
+      console.error("Failed to add checklist item:", error);
+      showError("Failed to add checklist item. Please try again.");
     }
   };
 
@@ -292,6 +388,32 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   };
 
   // Check if current user can approve this task
+  // const canApproveTask = () => {
+  //   if (!currentUser || !task) return false;
+
+  //   // Rule 1: Users assigned to the task cannot approve it
+  //   const isAssigned = assignees.some(
+  //     (assignee) => assignee.email === currentUser.email
+  //   );
+  //   if (isAssigned) return false;
+
+  //   // Rule 2: Only supervisors (branch managers, area managers, auditors, management) can approve
+  //   const approverRoles = [
+  //     "branch_manager",
+  //     "area_manager",
+  //     "auditor",
+  //     "management",
+  //   ];
+  //   if (!approverRoles.includes(currentUser.role)) return false;
+
+  //   // Rule 3: Task must be submitted to be approved
+  //   if (task.Status !== "submitted") return false;
+
+  //   return true;
+  // };
+
+  // Replace your existing canApproveTask function with this one
+
   const canApproveTask = () => {
     if (!currentUser || !task) return false;
 
@@ -392,8 +514,11 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
 
   // Check if current user is assigned to this task (only assignees can edit checklist)
   const canEditChecklist =
-    assignees.some((assignee) => assignee.email === currentUser?.email) &&
-    !isLocked;
+    assignees.some(
+      (assignee) =>
+        assignee.email === currentUser?.email ||
+        currentUser?.role === "management"
+    ) && !isLocked;
 
   return (
     <div className="space-y-6">
@@ -551,6 +676,44 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                   </p>
                 </div>
               ) : (
+                // checklistItems.map((item, index) => (
+                //   <div key={item.TaskChecklistItemId} className="space-y-3">
+                //     <div className="flex items-start gap-3">
+                //       <Checkbox
+                //         id={`item-${item.TaskChecklistItemId}`}
+                //         checked={item.Completed}
+                //         onCheckedChange={(checked) => updateChecklistItem(item.TaskChecklistItemId, checked as boolean, item.Notes)}
+                //         disabled={!canEditChecklist}
+                //       />
+                //       <div className="flex-1 space-y-2">
+                //         <label
+                //           htmlFor={`item-${item.TaskChecklistItemId}`}
+                //           className={`text-sm font-medium cursor-pointer ${
+                //             item.Completed ? "line-through text-muted-foreground" : ""
+                //           }`}
+                //         >
+                //           {item.Title}
+                //         </label>
+                //         {item.Notes && (
+                //           <p className="text-sm text-muted-foreground bg-muted p-2 rounded">
+                //             <MessageSquare className="h-3 w-3 inline mr-1" />
+                //             {item.Notes}
+                //           </p>
+                //         )}
+                //         <Textarea
+                //           placeholder="Add notes for this item..."
+                //           value={item.Notes || ""}
+                //           onChange={(e) => updateChecklistItem(item.TaskChecklistItemId, item.Completed, e.target.value)}
+                //           className="text-sm"
+                //           rows={2}
+                //           disabled={!canEditChecklist}
+                //         />
+                //       </div>
+                //     </div>
+                //     {index < checklistItems.length - 1 && <Separator />}
+                //   </div>
+                // ))
+                // REPLACE IT WITH THIS
                 checklistItems.map((item, index) => (
                   <div key={item.TaskChecklistItemId} className="space-y-3">
                     <div className="flex items-start gap-3">
@@ -602,6 +765,23 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                     {index < checklistItems.length - 1 && <Separator />}
                   </div>
                 ))
+              )}
+              {/* Add new checklist item UI */}
+              {canEditChecklist && (
+                <div className="space-y-2 pt-4">
+                  <Textarea
+                    placeholder="New checklist item title..."
+                    value={newItemTitle}
+                    onChange={(e) => setNewItemTitle(e.target.value)}
+                    rows={2}
+                  />
+                  <Button
+                    onClick={handleAddChecklistItem}
+                    disabled={!newItemTitle.trim()}
+                  >
+                    Add Checklist Item
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
