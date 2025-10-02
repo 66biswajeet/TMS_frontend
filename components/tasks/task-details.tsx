@@ -149,6 +149,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [assignees, setAssignees] = useState<Assignee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [newItemTitle, setNewItemTitle] = useState("");
 
   // Get current user from Redux state
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -231,6 +232,39 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
         error.response?.data?.error ||
         "Failed to update checklist item. Please try again.";
       showError(errorMessage);
+    }
+  };
+
+  const handleAddChecklistItem = async () => {
+    try {
+      const token = localStorage.getItem("token"); // Or however you're storing it
+
+      const response = await api.post(
+        `/tasks/${taskId}/checklist`,
+        {
+          title: newItemTitle,
+          description: "",
+        },
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      showSuccess(response.data.message);
+      setNewItemTitle("");
+
+      // Refresh checklist
+      const checklistResponse = await api.get(`/tasks/${taskId}/checklist`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      setChecklistItems(checklistResponse.data.items || []);
+    } catch (error) {
+      console.error("Failed to add checklist item:", error);
+      showError("Failed to add checklist item. Please try again.");
     }
   };
 
@@ -480,8 +514,11 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
 
   // Check if current user is assigned to this task (only assignees can edit checklist)
   const canEditChecklist =
-    assignees.some((assignee) => assignee.email === currentUser?.email) &&
-    !isLocked;
+    assignees.some(
+      (assignee) =>
+        assignee.email === currentUser?.email ||
+        currentUser?.role === "management"
+    ) && !isLocked;
 
   return (
     <div className="space-y-6">
@@ -728,6 +765,23 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                     {index < checklistItems.length - 1 && <Separator />}
                   </div>
                 ))
+              )}
+              {/* Add new checklist item UI */}
+              {canEditChecklist && (
+                <div className="space-y-2 pt-4">
+                  <Textarea
+                    placeholder="New checklist item title..."
+                    value={newItemTitle}
+                    onChange={(e) => setNewItemTitle(e.target.value)}
+                    rows={2}
+                  />
+                  <Button
+                    onClick={handleAddChecklistItem}
+                    disabled={!newItemTitle.trim()}
+                  >
+                    Add Checklist Item
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>
