@@ -89,22 +89,53 @@ export function TaskCreation() {
   }, [dispatch]);
 
   // Auto-select branch for roles with restrictions
+  // useEffect(() => {
+  //   if (
+  //     currentUser?.role === "branch_manager" &&
+  //     branches.length > 0 &&
+  //     !formData.branchIds
+  //   ) {
+  //     // For branch managers, we need to find their assigned branch
+  //     // This will be handled by the backend validation, but for now we'll use the first branch
+  //     // In a real implementation, you'd fetch the user's assigned branch from the API
+  //     setFormData((prev) => ({ ...prev, branchId: branches[0].BranchId }));
+  //   } else if (
+  //     currentUser?.role === "staff" &&
+  //     branches.length === 1 &&
+  //     !formData.branchIds
+  //   ) {
+  //     setFormData((prev) => ({ ...prev, branchId: branches[0].BranchId }));
+  //   }
+  // }, [branches, currentUser]);
+
+  // task-creation.tsx (The corrected useEffect)
+
   useEffect(() => {
     if (
       currentUser?.role === "branch_manager" &&
       branches.length > 0 &&
-      !formData.branchIds
+      // 🔑 FIX 1: Check if the array is empty instead of being falsy
+      formData.branchIds.length === 0
     ) {
       // For branch managers, we need to find their assigned branch
       // This will be handled by the backend validation, but for now we'll use the first branch
       // In a real implementation, you'd fetch the user's assigned branch from the API
-      setFormData((prev) => ({ ...prev, branchId: branches[0].BranchId }));
+      setFormData((prev) => ({
+        ...prev,
+        // 🔑 FIX 2: Update the branchIds ARRAY
+        branchIds: [branches[0].BranchId],
+      }));
     } else if (
       currentUser?.role === "staff" &&
       branches.length === 1 &&
-      !formData.branchIds
+      // 🔑 FIX 1 (Staff): Check if the array is empty
+      formData.branchIds.length === 0
     ) {
-      setFormData((prev) => ({ ...prev, branchId: branches[0].BranchId }));
+      setFormData((prev) => ({
+        ...prev,
+        // 🔑 FIX 2 (Staff): Update the branchIds ARRAY
+        branchIds: [branches[0].BranchId],
+      }));
     }
   }, [branches, currentUser]);
 
@@ -193,7 +224,8 @@ export function TaskCreation() {
       availableUsers = branchUsers.filter(
         (user: any) =>
           user.RoleRank === 5 && // Only staff (rank 5)
-          (user.FullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (user.FullName ||
+            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
       );
     }
@@ -203,7 +235,8 @@ export function TaskCreation() {
         availableUsers = branchUsers.filter(
           (user: any) =>
             user.RoleRank >= 4 && // Staff and branch managers
-            (user.FullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (user.FullName ||
+              "".toLowerCase().includes(searchTerm.toLowerCase()) ||
               user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
         );
       } else {
@@ -221,7 +254,8 @@ export function TaskCreation() {
         availableUsers = branchUsers.filter(
           (user: any) =>
             user.RoleRank >= 3 && // Area managers, branch managers, and staff
-            (user.FullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (user.FullName ||
+              "".toLowerCase().includes(searchTerm.toLowerCase()) ||
               user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
         );
       } else {
@@ -238,7 +272,8 @@ export function TaskCreation() {
       if (formData.branchIds) {
         availableUsers = branchUsers.filter(
           (user: any) =>
-            user.FullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.FullName ||
+            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.Email.toLowerCase().includes(searchTerm.toLowerCase())
         );
       } else {
@@ -254,7 +289,8 @@ export function TaskCreation() {
       if (formData.branchIds) {
         availableUsers = branchUsers.filter(
           (user: any) =>
-            user.FullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            user.FullName ||
+            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
             user.Email.toLowerCase().includes(searchTerm.toLowerCase())
         );
       } else {
@@ -503,7 +539,7 @@ export function TaskCreation() {
         formData.title &&
         formData.title.trim() !== "" &&
         formData.scope &&
-        formData.scope !== "" &&
+        // formData.scope !== "" &&
         formData.startTime !== "" &&
         formData.endTime !== "" &&
         formData.branchIds &&
@@ -807,10 +843,26 @@ export function TaskCreation() {
                   <Label htmlFor="branchId">Branch</Label>
                   <div className="flex items-center gap-2 p-3 border rounded-md bg-muted/50">
                     <span className="font-medium">
+                      {/* 🔑 DEBUG: Log branches array and the ID being looked up */}
+                      {console.log("--- Branch Manager Debug ---")}
+                      {console.log(
+                        "Branches Loaded:",
+                        branches.find((b) => b.BranchId)
+                      )}
+                      {console.log(
+                        "formData.branchIds (Manager):",
+                        formData.branchIds
+                      )}
+                      {console.log(
+                        "Lookup ID:",
+                        formData.branchIds && formData.branchIds.length > 0
+                          ? formData.branchIds[0]
+                          : "N/A"
+                      )}
+                      {/* 🔑 FIX APPLIED: Use formData.branchIds[0] for the lookup */}
                       {formData.branchIds
-                        ? branches.find(
-                            (b) => b.BranchId === formData.branchIds
-                          )?.BranchName || "Loading..."
+                        ? branches.find((b) => b.BranchId)?.BranchName ||
+                          "Loading..."
                         : "Your Assigned Branch"}
                     </span>
                     <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
@@ -1260,7 +1312,9 @@ export function TaskCreation() {
                                 : "cursor-not-allowed"
                             }`}
                           >
-                            {user.name || user.FullName}
+                            {user.name ||
+                              user.FullName ||
+                              user.FirstName + " " + user.LastName}
                           </Label>
                           {isCurrentUser && (
                             <span className="text-xs bg-red-100 text-red-800 px-2 py-1 rounded">

@@ -1,39 +1,76 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { useDispatch, useSelector } from "react-redux"
-import type { RootState } from "@/redux/store"
-import { fetchUsersMinimal, createUser, updateUser, deleteUser } from "@/redux/modules/users/actions"
-import { fetchBranches } from "@/redux/modules/branches/actions"
-import { fetchPositions } from "@/redux/modules/positions/actions"
-import { fetchRoles } from "@/redux/modules/roles/actions"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Search, Plus, Edit, Trash2, Users, UserCheck, Building } from "lucide-react"
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "@/redux/store";
+import {
+  fetchUsersMinimal,
+  createUser,
+  updateUser,
+  deleteUser,
+} from "@/redux/modules/users/actions";
+import { fetchBranches } from "@/redux/modules/branches/actions";
+import { fetchPositions } from "@/redux/modules/positions/actions";
+import { fetchRoles } from "@/redux/modules/roles/actions";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  Users,
+  UserCheck,
+  Building,
+} from "lucide-react";
 
 interface User {
-  id: string
-  name: string
-  email: string
-  password?: string
-  phone: string
-  emiratesId: string
-  gender: "male" | "female" | "other"
-  staffId: string
-  role: "staff" | "branch_manager" | "area_manager" | "auditor" | "management" | "admin"
-  position: string
-  rank: number
-  branch: string
-  status: "active" | "inactive"
-  lastLogin: string
-  createdAt: string
+  id: string;
+  name: string;
+  email: string;
+  password?: string;
+  phone: string;
+  emiratesId: string;
+  gender: "male" | "female" | "other";
+  staffId: string;
+  role:
+    | "staff"
+    | "branch_manager"
+    | "area_manager"
+    | "auditor"
+    | "management"
+    | "admin";
+  position: string;
+  rank: number;
+  branch: string;
+  status: "active" | "inactive";
+  lastLogin: string;
+  createdAt: string;
 }
 
 // Define role-specific positions mapping
@@ -44,69 +81,69 @@ const ROLE_POSITIONS = {
     "Pharmacy Technician",
     "Cashier",
     "Inventory Clerk",
-    "Customer Service Representative"
+    "Customer Service Representative",
   ],
-  branch_manager: [
-    "Branch Manager",
-    "Pharmacy Manager"
-  ],
-  area_manager: [
-    "Area Manager",
-    "Regional Supervisor"
-  ],
+  branch_manager: ["Branch Manager", "Pharmacy Manager"],
+  area_manager: ["Area Manager", "Regional Supervisor"],
   auditor: [
     "Quality Control Supervisor",
     "Compliance Auditor",
-    "Regulatory Inspector"
+    "Regulatory Inspector",
   ],
   management: [
     "Chief Executive Officer (CEO)",
     "Owner",
     "Operations Director",
-    "Pharmacy Director"
+    "Pharmacy Director",
   ],
-  admin: [
-    "System Administrator",
-    "IT Manager"
-  ]
-}
+  admin: ["System Administrator", "IT Manager"],
+};
 
 export function UsersManagement() {
-  const dispatch = useDispatch()
-  const { items: users, loading, error } = useSelector((state: RootState) => state.users)
-  const { items: branches } = useSelector((state: RootState) => state.branches)
-  const { items: positions } = useSelector((state: RootState) => state.positions)
-  const { items: roles } = useSelector((state: RootState) => state.roles)
-  
-  useEffect(() => {
-    dispatch(fetchUsersMinimal() as any)
-    dispatch(fetchBranches() as any)
-    dispatch(fetchPositions() as any)
-    dispatch(fetchRoles() as any)
-  }, [dispatch])
+  const dispatch = useDispatch();
+  const {
+    items: users,
+    loading,
+    error,
+  } = useSelector((state: RootState) => state.users);
+  const { items: branches } = useSelector((state: RootState) => state.branches);
+  const { items: positions } = useSelector(
+    (state: RootState) => state.positions
+  );
+  const { items: roles } = useSelector((state: RootState) => state.roles);
 
-  const [searchTerm, setSearchTerm] = useState("")
-  const [roleFilter, setRoleFilter] = useState<string>("all")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [branchFilter, setBranchFilter] = useState<string>("all")
-  const [positionFilter, setPositionFilter] = useState<string>("all")
+  useEffect(() => {
+    dispatch(fetchUsersMinimal() as any);
+    dispatch(fetchBranches() as any);
+    dispatch(fetchPositions() as any);
+    dispatch(fetchRoles() as any);
+  }, [dispatch]);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [branchFilter, setBranchFilter] = useState<string>("all");
+  const [positionFilter, setPositionFilter] = useState<string>("all");
 
   // Re-fetch users when branch filter changes
   useEffect(() => {
     if (branchFilter === "all") {
-      dispatch(fetchUsersMinimal() as any)
+      dispatch(fetchUsersMinimal() as any);
     } else {
       // Find the branch ID from branch name
-      const selectedBranch = branches.find((b: any) => b.BranchName === branchFilter);
+      const selectedBranch = branches.find(
+        (b: any) => b.BranchName === branchFilter
+      );
       if (selectedBranch) {
-        dispatch(fetchUsersMinimal(selectedBranch.BranchId) as any)
+        dispatch(fetchUsersMinimal(selectedBranch.BranchId) as any);
       }
     }
-  }, [branchFilter, branches, dispatch])
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [editingUser, setEditingUser] = useState<User | null>(null)
+  }, [branchFilter, branches, dispatch]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
-    name: "",
+    firstName: "",
+    lastName: "",
     email: "",
     password: "",
     phone: "",
@@ -117,82 +154,104 @@ export function UsersManagement() {
     position: "",
     rank: 10,
     status: "active",
-  })
+  });
 
   // Get filtered positions based on selected role
   const getFilteredPositions = (selectedRole: string) => {
-    if (!selectedRole) return positions
-    
-    const rolePositions = ROLE_POSITIONS[selectedRole as keyof typeof ROLE_POSITIONS] || []
-    
+    if (!selectedRole) return positions;
+
+    const rolePositions =
+      ROLE_POSITIONS[selectedRole as keyof typeof ROLE_POSITIONS] || [];
+
     // Filter actual positions that match the role-specific ones
     return positions.filter((position: any) =>
-      rolePositions.some(rolePosName =>
-        position.Name.toLowerCase().includes(rolePosName.toLowerCase()) ||
-        rolePosName.toLowerCase().includes(position.Name.toLowerCase())
+      rolePositions.some(
+        (rolePosName) =>
+          position.Name.toLowerCase().includes(rolePosName.toLowerCase()) ||
+          rolePosName.toLowerCase().includes(position.Name.toLowerCase())
       )
-    )
-  }
+    );
+  };
 
   // First check if there's an exact Staff ID match to prioritize it
-  const hasExactStaffIdMatch = searchTerm.trim() && users.some((user: any) =>
-    (user.staffId || "").toLowerCase() === searchTerm.toLowerCase().trim()
-  )
+  const hasExactStaffIdMatch =
+    searchTerm.trim() &&
+    users.some(
+      (user: any) =>
+        (user.staffId || "").toLowerCase() === searchTerm.toLowerCase().trim()
+    );
 
   const filteredUsers = users.filter((user: any) => {
-    const searchLower = searchTerm.toLowerCase().trim()
-    const userStaffId = (user.staffId || "").toLowerCase()
-    
+    const searchLower = searchTerm.toLowerCase().trim();
+    const userStaffId = (user.staffId || "").toLowerCase();
+
     // Apply filters
-    const matchesRole = roleFilter === "all" || user.role === roleFilter
-    const matchesStatus = statusFilter === "all" || user.status === statusFilter
-    const matchesBranch = branchFilter === "all" || user.branch === branchFilter
+    const matchesRole = roleFilter === "all" || user.role === roleFilter;
+    const matchesStatus =
+      statusFilter === "all" || user.status === statusFilter;
+    const matchesBranch =
+      branchFilter === "all" || user.branch === branchFilter;
     // Fix position filtering - handle null positions correctly
-    const userPosition = user.position || ""
-    const matchesPosition = positionFilter === "all" || userPosition === positionFilter
-    
+    const userPosition = user.position || "";
+    const matchesPosition =
+      positionFilter === "all" || userPosition === positionFilter;
+
     // If no search term, just apply filters
     if (!searchTerm.trim()) {
-      return matchesRole && matchesStatus && matchesBranch && matchesPosition
+      return matchesRole && matchesStatus && matchesBranch && matchesPosition;
     }
-    
+
     // If there's an exact Staff ID match, ONLY show that user
     if (hasExactStaffIdMatch) {
-      return userStaffId === searchLower && matchesRole && matchesStatus && matchesBranch && matchesPosition
+      return (
+        userStaffId === searchLower &&
+        matchesRole &&
+        matchesStatus &&
+        matchesBranch &&
+        matchesPosition
+      );
     }
-    
+
     // Otherwise use inclusive search across all fields
-    const matchesSearch = (
+    const matchesSearch =
       (user.name || "").toLowerCase().includes(searchLower) ||
       (user.email || "").toLowerCase().includes(searchLower) ||
       (user.phone || "").toLowerCase().includes(searchLower) ||
       userStaffId.includes(searchLower) ||
-      (user.emiratesId || "").toLowerCase().includes(searchLower)
-    )
+      (user.emiratesId || "").toLowerCase().includes(searchLower);
 
-    return matchesSearch && matchesRole && matchesStatus && matchesBranch && matchesPosition
-  })
+    return (
+      matchesSearch &&
+      matchesRole &&
+      matchesStatus &&
+      matchesBranch &&
+      matchesPosition
+    );
+  });
 
   // Handle role change and reset position if it's not valid for the new role
   const handleRoleChange = (newRole: string) => {
-    const updatedFormData = { ...formData, role: newRole }
-    
+    const updatedFormData = { ...formData, role: newRole };
+
     // Check if current position is valid for the new role
-    const filteredPositions = getFilteredPositions(newRole)
-    const isCurrentPositionValid = filteredPositions.some((pos: any) => pos.Name === formData.position)
-    
+    const filteredPositions = getFilteredPositions(newRole);
+    const isCurrentPositionValid = filteredPositions.some(
+      (pos: any) => pos.Name === formData.position
+    );
+
     // Reset position if it's not valid for the new role
     if (!isCurrentPositionValid) {
-      updatedFormData.position = ""
+      updatedFormData.position = "";
     }
-    
-    setFormData(updatedFormData)
-  }
+
+    setFormData(updatedFormData);
+  };
 
   const handleCreateUser = () => {
-    setEditingUser(null)
+    setEditingUser(null);
     setFormData({
-      name: "",
+      firstName: "",
+      lastName: "",
       email: "",
       password: "",
       phone: "",
@@ -203,18 +262,27 @@ export function UsersManagement() {
       position: "",
       rank: 10,
       status: "active",
-    })
-    setIsDialogOpen(true)
-  }
+    });
+    setIsDialogOpen(true);
+  };
 
   const handleEditUser = (user: any) => {
-    console.log('[Frontend] Editing user:', user);
-    console.log('[Frontend] User gender:', user.gender, 'type:', typeof user.gender);
-    
-    setEditingUser(user)
-    
+    console.log("[Frontend] Editing user:", user);
+    console.log(
+      "[Frontend] User gender:",
+      user.gender,
+      "type:",
+      typeof user.gender
+    );
+
+    const [firstName, ...lastNameParts] = (user.name || "").split(" ");
+    const lastName = lastNameParts.join(" ");
+
+    setEditingUser(user);
+
     const newFormData = {
-      name: user.name,
+      firstName: firstName || "",
+      lastName: lastName || "",
       email: user.email,
       password: "", // Don't populate password for security
       phone: user.phone,
@@ -226,35 +294,37 @@ export function UsersManagement() {
       rank: user.rank,
       status: user.status,
     };
-    
-    console.log('[Frontend] Setting form data:', newFormData);
-    console.log('[Frontend] Normalized gender:', newFormData.gender);
-    
-    setFormData(newFormData)
-    setIsDialogOpen(true)
-  }
+
+    console.log("[Frontend] Setting form data:", newFormData);
+    console.log("[Frontend] Normalized gender:", newFormData.gender);
+
+    setFormData(newFormData);
+    setIsDialogOpen(true);
+  };
 
   const handleDeleteUser = (userId: string) => {
     if (confirm("Are you sure you want to delete this user?")) {
-      dispatch(deleteUser(userId) as any)
+      dispatch(deleteUser(userId) as any);
     }
-  }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     // Map frontend form data to backend expected structure
     const backendData: any = {
-      fullName: formData.name,
+      firstName: formData.firstName,
+      lastName: formData.lastName,
       email: formData.email,
       phone: formData.phone,
       emiratesId: formData.emiratesId,
       gender: formData.gender,
       password: formData.password,
       staffId: formData.staffId,
-      positionId: positions.find((p: any) => p.Name === formData.position)?.PositionId,
+      positionId: positions.find((p: any) => p.Name === formData.position)
+        ?.PositionId,
       isActive: formData.status === "active",
-    }
+    };
 
     // Map role to roleRankId - get rank from role, not from form input
     const selectedRole = roles.find((r: any) => r.Name === formData.role);
@@ -267,72 +337,84 @@ export function UsersManagement() {
 
     if (editingUser) {
       // Update existing user
-      dispatch(updateUser(editingUser.id, backendData) as any)
+      dispatch(updateUser(editingUser.id, backendData) as any);
     } else {
       // Create new user
-      dispatch(createUser(backendData) as any)
+      dispatch(createUser(backendData) as any);
     }
 
-    setIsDialogOpen(false)
-  }
+    setIsDialogOpen(false);
+  };
 
   const getRoleColor = (role: string) => {
     switch (role) {
       case "admin":
       case "management":
-        return "default"
+        return "default";
       case "area_manager":
       case "branch_manager":
-        return "secondary"
+        return "secondary";
       case "auditor":
-        return "outline"
+        return "outline";
       case "staff":
-        return "outline"
+        return "outline";
       default:
-        return "outline"
+        return "outline";
     }
-  }
+  };
 
   const getRankColor = (rank: number) => {
-    if (rank <= 2) return "default" // Highest ranks (1-2)
-    if (rank <= 4) return "secondary" // High ranks (3-4)
-    if (rank <= 6) return "outline" // Mid ranks (5-6)
-    return "outline" // Lower ranks (7-10)
-  }
+    if (rank <= 2) return "default"; // Highest ranks (1-2)
+    if (rank <= 4) return "secondary"; // High ranks (3-4)
+    if (rank <= 6) return "outline"; // Mid ranks (5-6)
+    return "outline"; // Lower ranks (7-10)
+  };
 
   const formatDate = (dateString: string) => {
-    if (dateString === "Never") return "Never"
-    return new Date(dateString).toLocaleDateString()
-  }
+    if (dateString === "Never") return "Never";
+    return new Date(dateString).toLocaleDateString();
+  };
 
   const formatLastLogin = (dateString: string) => {
-    if (dateString === "Never") return "Never"
-    const date = new Date(dateString)
-    const now = new Date()
-    const diffHours = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60))
+    if (dateString === "Never") return "Never";
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffHours = Math.floor(
+      (now.getTime() - date.getTime()) / (1000 * 60 * 60)
+    );
 
     if (diffHours < 24) {
-      return `${diffHours}h ago`
+      return `${diffHours}h ago`;
     } else {
-      const diffDays = Math.floor(diffHours / 24)
-      return `${diffDays}d ago`
+      const diffDays = Math.floor(diffHours / 24);
+      return `${diffDays}d ago`;
     }
-  }
+  };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading...</div>
+    return (
+      <div className="flex justify-center items-center h-64">Loading...</div>
+    );
   }
 
   if (error) {
-    return <div className="flex justify-center items-center h-64 text-red-600">Error: {error}</div>
+    return (
+      <div className="flex justify-center items-center h-64 text-red-600">
+        Error: {error}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Users Management</h1>
-          <p className="text-muted-foreground">Manage user accounts and permissions</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            Users Management
+          </h1>
+          <p className="text-muted-foreground">
+            Manage user accounts and permissions
+          </p>
         </div>
         <Button onClick={handleCreateUser}>
           <Plus className="h-4 w-4 mr-2" />
@@ -348,7 +430,9 @@ export function UsersManagement() {
             <Users className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{users.length}</div>
+            <div className="text-2xl font-bold text-primary">
+              {users.length}
+            </div>
             <p className="text-xs text-muted-foreground">Registered accounts</p>
           </CardContent>
         </Card>
@@ -359,7 +443,9 @@ export function UsersManagement() {
             <UserCheck className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{users.filter((u: any) => u.status === "active").length}</div>
+            <div className="text-2xl font-bold text-green-600">
+              {users.filter((u: any) => u.status === "active").length}
+            </div>
             <p className="text-xs text-muted-foreground">Currently active</p>
           </CardContent>
         </Card>
@@ -371,7 +457,12 @@ export function UsersManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {users.filter((u: any) => u.role.includes("manager") || u.role === "management").length}
+              {
+                users.filter(
+                  (u: any) =>
+                    u.role.includes("manager") || u.role === "management"
+                ).length
+              }
             </div>
             <p className="text-xs text-muted-foreground">Management roles</p>
           </CardContent>
@@ -383,7 +474,9 @@ export function UsersManagement() {
             <Users className="h-4 w-4 text-gray-500" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-gray-600">{users.filter((u: any) => u.role === "staff").length}</div>
+            <div className="text-2xl font-bold text-gray-600">
+              {users.filter((u: any) => u.role === "staff").length}
+            </div>
             <p className="text-xs text-muted-foreground">Staff members</p>
           </CardContent>
         </Card>
@@ -470,7 +563,9 @@ export function UsersManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Users</CardTitle>
-          <CardDescription>Manage user accounts, roles, and permissions</CardDescription>
+          <CardDescription>
+            Manage user accounts, roles, and permissions
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -495,54 +590,75 @@ export function UsersManagement() {
 
                   return (
                     <tr key={uniqueKey} className="border-b hover:bg-muted/50">
-                    <td className="p-4">
-                      <div>
-                        <div className="font-medium">{user.name}</div>
-                        <div className="text-sm text-muted-foreground">{user.email}</div>
-                        <div className="text-xs text-muted-foreground">
-                          ID: {user.staffId} • {user.phone}
+                      <td className="p-4">
+                        <div>
+                          <div className="font-medium">{user.name}</div>
+                          <div className="text-sm text-muted-foreground">
+                            {user.email}
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            ID: {user.staffId} • {user.phone}
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <Badge variant={getRoleColor(user.role)} className="text-xs">
-                        {user.role.replace("_", " ")}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-sm">{user.position}</td>
-                    <td className="p-4">
-                      <Badge variant={getRankColor(user.rank)} className="text-xs">
-                        {user.rank}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-sm">{user.branch}</td>
-                    <td className="p-4">
-                      <Badge variant={user.status === "active" ? "default" : "secondary"} className="text-xs">
-                        {user.status}
-                      </Badge>
-                    </td>
-                    <td className="p-4 text-sm">{formatLastLogin(user.lastLogin)}</td>
-                    <td className="p-4 text-sm">{formatDate(user.createdAt)}</td>
-                    <td className="p-4">
-                      <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditUser(user)}>
-                          <Edit className="h-3 w-3 mr-1" />
-                          Edit
-                        </Button>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDeleteUser(user.id)}
-                          className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      </td>
+                      <td className="p-4">
+                        <Badge
+                          variant={getRoleColor(user.role)}
+                          className="text-xs"
                         >
-                          <Trash2 className="h-3 w-3 mr-1" />
-                          Delete
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                 );
-               })}
+                          {user.role.replace("_", " ")}
+                        </Badge>
+                      </td>
+                      <td className="p-4 text-sm">{user.position}</td>
+                      <td className="p-4">
+                        <Badge
+                          variant={getRankColor(user.rank)}
+                          className="text-xs"
+                        >
+                          {user.rank}
+                        </Badge>
+                      </td>
+                      <td className="p-4 text-sm">{user.branch}</td>
+                      <td className="p-4">
+                        <Badge
+                          variant={
+                            user.status === "active" ? "default" : "secondary"
+                          }
+                          className="text-xs"
+                        >
+                          {user.status}
+                        </Badge>
+                      </td>
+                      <td className="p-4 text-sm">
+                        {formatLastLogin(user.lastLogin)}
+                      </td>
+                      <td className="p-4 text-sm">
+                        {formatDate(user.createdAt)}
+                      </td>
+                      <td className="p-4">
+                        <div className="flex gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleEditUser(user)}
+                          >
+                            <Edit className="h-3 w-3 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleDeleteUser(user.id)}
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                          >
+                            <Trash2 className="h-3 w-3 mr-1" />
+                            Delete
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -553,7 +669,9 @@ export function UsersManagement() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editingUser ? "Edit User" : "Create New User"}</DialogTitle>
+            <DialogTitle>
+              {editingUser ? "Edit User" : "Create New User"}
+            </DialogTitle>
             <DialogDescription>
               {editingUser
                 ? "Update user information and permissions."
@@ -563,11 +681,24 @@ export function UsersManagement() {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label htmlFor="name">Full Name *</Label>
+                <Label htmlFor="firstName">First Name *</Label>
                 <Input
-                  id="name"
-                  value={formData.name}
-                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  id="firstName"
+                  value={formData.firstName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, firstName: e.target.value })
+                  }
+                  required
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="lastName">Last Name *</Label>
+                <Input
+                  id="lastName"
+                  value={formData.lastName}
+                  onChange={(e) =>
+                    setFormData({ ...formData, lastName: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -578,7 +709,9 @@ export function UsersManagement() {
                   id="email"
                   type="email"
                   value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, email: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -591,7 +724,9 @@ export function UsersManagement() {
                   id="password"
                   type="password"
                   value={formData.password}
-                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, password: e.target.value })
+                  }
                   required
                   placeholder="Enter initial password"
                 />
@@ -605,7 +740,9 @@ export function UsersManagement() {
                   id="phone"
                   type="tel"
                   value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, phone: e.target.value })
+                  }
                   placeholder="+971501234567"
                   required
                 />
@@ -616,7 +753,9 @@ export function UsersManagement() {
                 <Input
                   id="emiratesId"
                   value={formData.emiratesId}
-                  onChange={(e) => setFormData({ ...formData, emiratesId: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, emiratesId: e.target.value })
+                  }
                   placeholder="784-YYYY-XXXXXXX-X"
                 />
               </div>
@@ -626,9 +765,11 @@ export function UsersManagement() {
               <div className="space-y-2">
                 <Label htmlFor="gender">Gender *</Label>
                 <Select
-                  key={editingUser ? `gender-${editingUser.id}` : 'gender-new'}
+                  key={editingUser ? `gender-${editingUser.id}` : "gender-new"}
                   value={formData.gender}
-                  onValueChange={(value) => setFormData({ ...formData, gender: value })}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, gender: value })
+                  }
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Select gender" />
@@ -646,7 +787,9 @@ export function UsersManagement() {
                 <Input
                   id="staffId"
                   value={formData.staffId}
-                  onChange={(e) => setFormData({ ...formData, staffId: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, staffId: e.target.value })
+                  }
                   placeholder="PH001, BM001, etc."
                 />
               </div>
@@ -661,7 +804,9 @@ export function UsersManagement() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="staff">Staff</SelectItem>
-                    <SelectItem value="branch_manager">Branch Manager</SelectItem>
+                    <SelectItem value="branch_manager">
+                      Branch Manager
+                    </SelectItem>
                     <SelectItem value="area_manager">Area Manager</SelectItem>
                     <SelectItem value="auditor">Auditor</SelectItem>
                     <SelectItem value="management">Management</SelectItem>
@@ -674,27 +819,37 @@ export function UsersManagement() {
                 <Label htmlFor="position">Position</Label>
                 <Select
                   value={formData.position}
-                  onValueChange={(value) => setFormData({ ...formData, position: value })}
+                  onValueChange={(value) =>
+                    setFormData({ ...formData, position: value })
+                  }
                   disabled={!formData.role}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder={formData.role ? "Select position" : "Select role first"} />
+                    <SelectValue
+                      placeholder={
+                        formData.role ? "Select position" : "Select role first"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {getFilteredPositions(formData.role).map((position: any) => (
-                      <SelectItem key={position.PositionId} value={position.Name}>
-                        {position.Name}
-                      </SelectItem>
-                    ))}
+                    {getFilteredPositions(formData.role).map(
+                      (position: any) => (
+                        <SelectItem
+                          key={position.PositionId}
+                          value={position.Name}
+                        >
+                          {position.Name}
+                        </SelectItem>
+                      )
+                    )}
                   </SelectContent>
                 </Select>
                 {formData.role && (
                   <p className="text-xs text-muted-foreground">
-                    Showing positions for {formData.role.replace('_', ' ')} role
+                    Showing positions for {formData.role.replace("_", " ")} role
                   </p>
                 )}
               </div>
-              
             </div>
 
             {/* Rank is now determined by role, not manually set */}
@@ -706,7 +861,12 @@ export function UsersManagement() {
 
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
-              <Select value={formData.status} onValueChange={(value) => setFormData({ ...formData, status: value })}>
+              <Select
+                value={formData.status}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, status: value })
+                }
+              >
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -734,5 +894,5 @@ export function UsersManagement() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
