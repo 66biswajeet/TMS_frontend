@@ -86,6 +86,22 @@ interface ChecklistItemComponentProps {
   onUpdate: (itemId: string, completed: boolean, notes?: string) => void;
 }
 
+interface ChecklistPhoto {
+  PhotoId: string;
+  PhotoUrl: string;
+  UploadedAt: string;
+  UploadedByName?: string;
+}
+
+interface ChecklistItem {
+  TaskChecklistItemId: string;
+  Title: string;
+  Completed: boolean;
+  Notes?: string;
+  SortOrder: number;
+  Photos?: ChecklistPhoto[]; // ✅ Add this line
+}
+
 // The new component for rendering a single checklist item
 const ChecklistItemComponent = ({
   item,
@@ -233,6 +249,20 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
         "Failed to update checklist item. Please try again.";
       showError(errorMessage);
     }
+  };
+
+  //--function to add photo to checklist item
+  const uploadCompletionPhoto = async (itemId: string, file: File) => {
+    const form = new FormData();
+    form.append("photo", file);
+    const r = await api.post(
+      `/tasks/${taskId}/checklist/${itemId}/photo`,
+      form,
+      {
+        headers: { "Content-Type": "multipart/form-data" },
+      }
+    );
+    return r.data.photoUrl as string;
   };
 
   const handleAddChecklistItem = async () => {
@@ -760,6 +790,71 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                           rows={2}
                           disabled={!canEditChecklist}
                         />
+                        {/* Display photos if any */}
+                        {/* Photo upload section */}
+                        <div className="space-y-2">
+                          <p className="text-xs text-muted-foreground">
+                            Add a completion photo (optional)
+                          </p>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            capture="environment" // ✅ opens phone camera
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                const url = await uploadCompletionPhoto(
+                                  item.TaskChecklistItemId,
+                                  file
+                                );
+                                setChecklistItems((items) =>
+                                  items.map((it) =>
+                                    it.TaskChecklistItemId ===
+                                    item.TaskChecklistItemId
+                                      ? {
+                                          ...it,
+                                          Photos: [
+                                            {
+                                              PhotoId: "temp",
+                                              PhotoUrl: url,
+                                              UploadedAt:
+                                                new Date().toISOString(),
+                                              UploadedByName: currentUser?.name,
+                                            },
+                                            ...(it.Photos || []),
+                                          ],
+                                        }
+                                      : it
+                                  )
+                                );
+                                showSuccess("Photo uploaded successfully");
+                              } catch (err) {
+                                console.error(err);
+                                showError("Failed to upload photo");
+                              }
+                            }}
+                          />
+                          {item.Photos && item.Photos.length > 0 && (
+                            <div className="flex gap-2 flex-wrap pt-2">
+                              {item.Photos.slice(0, 3).map((ph) => (
+                                <div
+                                  key={ph.PhotoId}
+                                  className="flex flex-col items-center"
+                                >
+                                  <img
+                                    src={ph.PhotoUrl}
+                                    alt="Completion"
+                                    className="h-16 w-16 object-cover rounded border"
+                                  />
+                                  <p className="text-xs text-muted-foreground mt-1">
+                                    {ph.UploadedByName || "Uploaded"}
+                                  </p>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                     {index < checklistItems.length - 1 && <Separator />}

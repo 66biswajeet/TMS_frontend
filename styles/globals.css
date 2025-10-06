@@ -121,3 +121,52 @@
     @apply bg-background text-foreground;
   }
 }
+
+------------Styles for Toast Notifications------------
+
+.toast-elegant {
+  animation: slideIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toast-title {
+  font-weight: 600;
+  font-size: 1rem;
+  margin-bottom: 0.25rem;
+}
+
+.toast-description {
+  opacity: 0.95;
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.toast-success {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  box-shadow: 0 10px 40px rgba(16, 185, 129, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+.toast-error {
+  background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%) !important;
+  box-shadow: 0 10px 40px rgba(239, 68, 68, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+.toast-warning {
+  background: linear-gradient(135deg, #fad961 0%, #f76b1c 100%) !important;
+  box-shadow: 0 10px 40px rgba(245, 158, 11, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
+
+.toast-info {
+  background: linear-gradient(135deg, #a8edea 0%, #fed6e3 100%) !important;
+  box-shadow: 0 10px 40px rgba(59, 130, 246, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.1) inset !important;
+}
