@@ -35,6 +35,13 @@ export const navigationConfig: NavItem[] = [
     roles: ["branch_manager", "area_manager", "auditor", "management", "admin"],
   },
   {
+    label: "My Attendance",
+    href: "/attendance",
+    icon: BarChartIcon,
+    roles: ["staff","branch_manager", "area_manager", "auditor", "management", "admin"],
+  },
+  
+  {
     label: "Manage",
     href: "#",
     icon: UsersIcon,
@@ -62,6 +69,12 @@ export const navigationConfig: NavItem[] = [
         label: "Positions",
         href: "/positions",
         icon: BriefcaseIcon,
+        roles: ["management", "admin"],
+      },
+      {
+        label: "Manage Attendance",
+        href: "/manageAttendance",
+        icon: BarChartIcon,
         roles: ["management", "admin"],
       },
     ],

@@ -1,6 +1,7 @@
-// "use client";
+// ============================================================//
+
 "use client";
-import { useEffect, useState, useCallback, useMemo } from "react";
+import { useEffect, useState, useCallback, useMemo, useRef } from "react";
 
 const OFFICE_RADIUS_METERS = 100;
 const API_BASE_URL = "http://localhost:5050/attendance";
@@ -11,14 +12,28 @@ interface Coordinates {
 }
 
 interface AttendanceRecord {
-  WorkDate: string; // Date of the record
+  WorkDate: string;
   CheckInAt: string | null;
   CheckOutAt: string | null;
-  // Add other fields you expect, like ID for history
+  BreakInAt: string | null;
+  BreakOutAt: string | null;
+  TotalBreakDuration: string | null;
+
   id?: string;
 }
 
-// --- MOCK UI COMPONENTS (Using native elements and Tailwind) ---
+interface Query {
+  QueryId: string;
+  UserId: string;
+  Subject: string;
+  Message: string;
+  Proofurl: string | null;
+  Status: string;
+  RaisedAt: string;
+  ResolutionNotes: string | null;
+}
+
+// Enhanced Button Component
 const Button = ({
   children,
   onClick,
@@ -27,15 +42,25 @@ const Button = ({
   className = "",
 }: any) => {
   let baseStyle =
-    "px-4 py-2 font-semibold rounded-lg transition duration-300 shadow-md";
+    "px-6 py-3 font-semibold rounded-xl transition-all duration-300 shadow-lg transform hover:scale-105 active:scale-95 disabled:transform-none disabled:hover:scale-100";
+
   if (variant === "secondary") {
-    baseStyle += " bg-gray-200 text-gray-800 hover:bg-gray-300";
+    baseStyle +=
+      " bg-gradient-to-r from-gray-100 to-gray-200 text-gray-800 hover:from-gray-200 hover:to-gray-300 hover:shadow-xl";
+  } else if (variant === "success") {
+    baseStyle +=
+      " bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-green-500/50";
+  } else if (variant === "danger") {
+    baseStyle +=
+      " bg-gradient-to-r from-red-500 to-pink-600 text-white hover:from-red-600 hover:to-pink-700 hover:shadow-red-500/50";
   } else {
-    baseStyle += " bg-indigo-600 text-white hover:bg-indigo-700";
+    baseStyle +=
+      " bg-gradient-to-r from-indigo-600 to-purple-600 text-white hover:from-indigo-700 hover:to-purple-700 hover:shadow-indigo-500/50";
   }
+
   if (disabled) {
     baseStyle =
-      "px-4 py-2 font-semibold rounded-lg transition duration-300 bg-gray-400 text-gray-200 cursor-not-allowed";
+      "px-6 py-3 font-semibold rounded-xl bg-gray-300 text-gray-500 cursor-not-allowed opacity-60";
   }
 
   return (
@@ -49,7 +74,7 @@ const Button = ({
   );
 };
 
-// Mock Lucide Icons (assuming they are available in the environment)
+// Mock Icons with enhanced styling
 const Clock = (props: any) => (
   <svg
     {...props}
@@ -65,6 +90,7 @@ const Clock = (props: any) => (
     />
   </svg>
 );
+
 const Calendar = (props: any) => (
   <svg
     {...props}
@@ -80,6 +106,7 @@ const Calendar = (props: any) => (
     />
   </svg>
 );
+
 const CheckCircle = (props: any) => (
   <svg
     {...props}
@@ -95,6 +122,7 @@ const CheckCircle = (props: any) => (
     />
   </svg>
 );
+
 const XCircle = (props: any) => (
   <svg
     {...props}
@@ -110,6 +138,7 @@ const XCircle = (props: any) => (
     />
   </svg>
 );
+
 const RefreshCw = (props: any) => (
   <svg
     {...props}
@@ -126,36 +155,78 @@ const RefreshCw = (props: any) => (
   </svg>
 );
 
-// --- GEOLIB REPLACEMENT (Haversine Formula for distance) ---
+const MessageSquare = (props: any) => (
+  <svg
+    {...props}
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"
+    />
+  </svg>
+);
 
+const Paperclip = (props: any) => (
+  <svg
+    {...props}
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"
+    />
+  </svg>
+);
+
+const MapPin = (props: any) => (
+  <svg
+    {...props}
+    fill="none"
+    viewBox="0 0 24 24"
+    stroke="currentColor"
+    strokeWidth="2"
+  >
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+    />
+    <path
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+    />
+  </svg>
+);
+
+// Haversine Formula
 const getDistanceInMeters = (start: Coordinates, end: Coordinates): number => {
-  const R = 6371000; // Radius of Earth in meters
-  const lat1 = start.latitude;
-  const lon1 = start.longitude;
-  const lat2 = end.latitude;
-  const lon2 = end.longitude;
-
+  const R = 6371000;
   const toRad = (angle: number) => (Math.PI / 180) * angle;
-
-  const dLat = toRad(lat2 - lat1);
-  const dLon = toRad(lon2 - lon1);
-
+  const dLat = toRad(end.latitude - start.latitude);
+  const dLon = toRad(end.longitude - start.longitude);
   const a =
     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(toRad(lat1)) *
-      Math.cos(toRad(lat2)) *
+    Math.cos(toRad(start.latitude)) *
+      Math.cos(toRad(end.latitude)) *
       Math.sin(dLon / 2) *
       Math.sin(dLon / 2);
-
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
   return R * c;
 };
 
-// --- API HELPERS ---
-
+// API Helpers
 const postData = async (url: string, data: any) => {
-  const token = localStorage.getItem("token");
+  const token = window.localStorage?.getItem("token");
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -172,7 +243,7 @@ const postData = async (url: string, data: any) => {
 };
 
 const fetchData = async (url: string) => {
-  const token = localStorage.getItem("token");
+  const token = window.localStorage?.getItem("token");
   const response = await fetch(url, {
     method: "GET",
     headers: {
@@ -186,9 +257,7 @@ const fetchData = async (url: string) => {
   };
 };
 
-// --- FORMATTING HELPERS ---
-
-// Helper function to format UTC ISO string to readable local time (H:mm A)
+// Formatting Helpers
 const formatTime = (isoString: string | null): string => {
   if (!isoString) return "—";
   try {
@@ -203,7 +272,6 @@ const formatTime = (isoString: string | null): string => {
   }
 };
 
-// Helper function to format UTC ISO string to readable date (Mon, Oct 7)
 const formatDate = (isoString: string): string => {
   try {
     const date = new Date(isoString);
@@ -217,7 +285,21 @@ const formatDate = (isoString: string): string => {
   }
 };
 
-// Helper function to calculate duration in HH:mm format
+const formatDateTime = (isoString: string): string => {
+  try {
+    const date = new Date(isoString);
+    return date.toLocaleDateString("en-IN", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "Invalid Date";
+  }
+};
+
 const calculateDuration = (
   checkIn: string | null,
   checkOut: string | null
@@ -226,31 +308,22 @@ const calculateDuration = (
   try {
     const inTime = new Date(checkIn).getTime();
     const outTime = checkOut ? new Date(checkOut).getTime() : Date.now();
-
-    if (outTime < inTime) return "Error"; // Should not happen
-
+    if (outTime < inTime) return "Error";
     const diffMs = outTime - inTime;
     const hours = Math.floor(diffMs / (1000 * 60 * 60));
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
     const pad = (num: number) => num.toString().padStart(2, "0");
-
     return `${pad(hours)}:${pad(minutes)}`;
   } catch {
     return "Error";
   }
 };
 
-// ===============================================
-
 export default function AttendancePage() {
-  // STATE FOR ATTENDANCE RECORD
   const [record, setRecord] = useState<AttendanceRecord | null>(null);
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [historyLoading, setHistoryLoading] = useState<boolean>(false);
-
-  // STATE FOR GEO-LOCATION AND STATUS
   const [officeLocation, setOfficeLocation] = useState<Coordinates | null>(
     null
   );
@@ -260,22 +333,48 @@ export default function AttendancePage() {
   );
   const [isButtonDisabled, setIsButtonDisabled] = useState<boolean>(true);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [queries, setQueries] = useState<Query[]>([]);
+  const [queriesLoading, setQueriesLoading] = useState<boolean>(false);
+  const [querySubject, setQuerySubject] = useState<string>("");
+  const [queryMessage, setQueryMessage] = useState<string>("");
+  const [queryProofFile, setQueryProofFile] = useState<File | null>(null);
+  const [isSubmittingQuery, setIsSubmittingQuery] = useState<boolean>(false);
+  const [queryStatus, setQueryStatus] = useState<string>("");
+  const [showQueryForm, setShowQueryForm] = useState<boolean>(false);
 
-  // --- API FUNCTIONS ---
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const proofInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadFile = async (file: File) => {
+    const token = window.localStorage?.getItem("token");
+    const formData = new FormData();
+    formData.append("selfie", file);
+    const response = await fetch(`${API_BASE_URL}/upload-selfie`, {
+      method: "POST",
+      headers: {
+        ...(token && { Authorization: `Bearer ${token}` }),
+      },
+      body: formData,
+    });
+    return {
+      data: await response
+        .json()
+        .catch(() => ({ message: response.statusText })),
+      ok: response.ok,
+      status: response.status,
+    };
+  };
 
   const fetchAttendanceRecord = useCallback(async () => {
     setLoading(true);
     try {
       const res = await fetchData(`${API_BASE_URL}/my`);
       if (res.ok) {
-        // Assuming your endpoint returns { record: {...} }
         setRecord(res.data.record || null);
       } else {
-        console.error("Failed to fetch attendance record:", res.data.message);
         setRecord(null);
       }
     } catch (error) {
-      console.error("Network error fetching record:", error);
       setRecord(null);
     } finally {
       setLoading(false);
@@ -285,62 +384,54 @@ export default function AttendancePage() {
   const fetchAttendanceHistory = useCallback(async () => {
     setHistoryLoading(true);
     try {
-      // NOTE: Assuming history endpoint returns a 'record' array field, as suggested by console.log in original code
       const res = await fetchData(`${API_BASE_URL}/history`);
-      console.log("history called");
-      //   if (res.ok) {
-      //     console.log("if condition");
-      //     const records = res.data.record;
-      //     console.log(res.data);
-      //     // records.sort(
-      //     //   (a, b) =>
-      //     //     new Date(b.WorkDate).getTime() - new Date(a.WorkDate).getTime()
-      //     // );
-
-      //     setHistory(records);
-
-      //     console.log("his", history);
-      //   } else {
-      //     console.error("Failed to fetch attendance history:", res.data.message);
-      //     setHistory([]);
-      //   }
-      // }
-
       if (res.ok) {
         const recordData = res.data.record;
-        const records = Array.isArray(recordData) ? recordData : [recordData]; // ensures always an array
-
+        const records = Array.isArray(recordData) ? recordData : [recordData];
         records.sort(
           (a, b) =>
             new Date(b.WorkDate).getTime() - new Date(a.WorkDate).getTime()
         );
-
         setHistory(records);
-        console.log("History records:", records);
       } else {
-        console.error("Failed to fetch attendance history:", res.data.message);
         setHistory([]);
       }
     } catch (error) {
-      console.error("Network error fetching history:", error);
       setHistory([]);
     } finally {
       setHistoryLoading(false);
     }
   }, []);
 
-  // --- EFFECTS ---
+  const fetchQueries = useCallback(async () => {
+    setQueriesLoading(true);
+    try {
+      const res = await fetchData(`${API_BASE_URL}/query/history`);
+      if (res.ok) {
+        const historyData = res.data.history;
+        const queryList = Array.isArray(historyData)
+          ? historyData
+          : [historyData];
+        setQueries(queryList);
+      } else {
+        setQueries([]);
+      }
+    } catch (error) {
+      setQueries([]);
+    } finally {
+      setQueriesLoading(false);
+    }
+  }, []);
 
-  // Initial Data Fetch (Today's record, history, and office location)
   useEffect(() => {
     fetchAttendanceRecord();
     fetchAttendanceHistory();
+    fetchQueries();
 
     const fetchOfficeLocation = async () => {
       setLocationStatus("Fetching office coordinates...");
       try {
         const res = await fetchData(`${API_BASE_URL}/office/location`);
-
         if (res.ok) {
           setLocationStatus(
             "Office coordinates received. Checking user GPS..."
@@ -350,27 +441,18 @@ export default function AttendancePage() {
             longitude: parseFloat(res.data.longitude),
           });
         } else {
-          setLocationStatus(
-            `Error: Could not fetch office location. Reason: ${
-              res.data.message || res.status
-            }`
-          );
+          setLocationStatus(`Error: Could not fetch office location.`);
         }
       } catch (e) {
-        setLocationStatus(
-          "Network error fetching office location. Is the server running?"
-        );
+        setLocationStatus("Network error fetching office location.");
       }
     };
     fetchOfficeLocation();
-  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+  }, [fetchAttendanceRecord, fetchAttendanceHistory, fetchQueries]);
 
-  // Watch User Location and calculate distance
   useEffect(() => {
     if (!officeLocation) return;
-
     setLocationStatus("Office coordinates received. Checking user GPS...");
-
     const watchId = navigator.geolocation.watchPosition(
       (position) => {
         const currentLoc = {
@@ -378,73 +460,99 @@ export default function AttendancePage() {
           longitude: position.coords.longitude,
         };
         setUserLocation(currentLoc);
-        // Use the local getDistanceInMeters function
         const distance = getDistanceInMeters(currentLoc, officeLocation);
         const isTooFar = distance > OFFICE_RADIUS_METERS;
         setLocationStatus(
           isTooFar
-            ? `Too Far: ${distance.toFixed(
-                0
-              )}m away. Radius: ${OFFICE_RADIUS_METERS}m`
-            : `You are ${distance.toFixed(0)}m away. Ready for action!`
+            ? `Outside office range: ${distance.toFixed(0)}m away`
+            : `Within range: ${distance.toFixed(0)}m from office`
         );
         setIsButtonDisabled(isTooFar);
       },
       (err) => {
-        setLocationStatus(`Location Error: ${err.message}.`);
+        setLocationStatus(`Location Error: ${err.message}`);
         setIsButtonDisabled(true);
       },
       { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
     );
-
     return () => navigator.geolocation.clearWatch(watchId);
   }, [officeLocation]);
 
-  // --- BUTTON HANDLERS ---
-
-  const handleCheckIn = useCallback(async () => {
-    if (!userLocation || isProcessing) return;
-
-    setIsProcessing(true);
-    setLocationStatus("Sending check-in request...");
-
-    try {
-      const result = await postData(`${API_BASE_URL}/check-in`, {
-        userLat: userLocation.latitude,
-        userLong: userLocation.longitude,
-      });
-
-      if (result.ok) {
-        setLocationStatus(`✅ Check-In Success! Fetching updated status...`);
-        await fetchAttendanceRecord();
-        await fetchAttendanceHistory();
-      } else if (result.status === 403) {
-        setLocationStatus(`❌ Check-In Failed: ${result.data.message}`);
-      } else {
-        setLocationStatus(
-          `❌ Check-In Failed: ${result.data.message || "Server error."}`
-        );
-      }
-    } catch (error) {
-      setLocationStatus("Network error during check-in.");
-    } finally {
-      setIsProcessing(false);
+  const handleCheckIn = useCallback(() => {
+    const isCheckInBlocked =
+      isProcessing || loading || isButtonDisabled || !!record?.CheckInAt;
+    if (isCheckInBlocked) {
+      setLocationStatus(
+        !userLocation || isButtonDisabled
+          ? "Out of office range or GPS not ready."
+          : "Check-in blocked."
+      );
+      return;
     }
-  }, [
-    userLocation,
-    isProcessing,
-    fetchAttendanceRecord,
-    fetchAttendanceHistory,
-  ]);
+    setIsProcessing(true);
+    setLocationStatus("Opening camera for selfie...");
+    fileInputRef.current?.click();
+  }, [isProcessing, loading, isButtonDisabled, record, userLocation]);
+
+  const handleSelfieCapture = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) {
+        setLocationStatus("Selfie capture cancelled.");
+        setIsProcessing(false);
+        if (e.target) (e.target as HTMLInputElement).value = "";
+        return;
+      }
+      if (!userLocation) {
+        setLocationStatus("Location data lost. Please try again.");
+        setIsProcessing(false);
+        if (e.target) (e.target as HTMLInputElement).value = "";
+        return;
+      }
+      setIsProcessing(true);
+      setLocationStatus("Uploading selfie and initiating check-in...");
+      try {
+        const uploadRes = await uploadFile(file);
+        if (!uploadRes.ok || !uploadRes.data.fileUrl) {
+          setLocationStatus(
+            `❌ Selfie Upload Failed: ${
+              uploadRes.data.message || "Server error."
+            }`
+          );
+          return;
+        }
+        const { fileUrl } = uploadRes.data;
+        const checkInRes = await postData(`${API_BASE_URL}/check-in`, {
+          userLat: userLocation.latitude,
+          userLong: userLocation.longitude,
+          selfieUrl: fileUrl,
+        });
+        if (checkInRes.ok) {
+          setLocationStatus(`✅ Check-In Success!`);
+          await fetchAttendanceRecord();
+          await fetchAttendanceHistory();
+        } else {
+          setLocationStatus(
+            `❌ Check-In Failed: ${checkInRes.data.message || "Server error."}`
+          );
+        }
+      } catch (error) {
+        setLocationStatus("Network error during check-in.");
+      } finally {
+        setIsProcessing(false);
+        if (e.target) (e.target as HTMLInputElement).value = "";
+      }
+    },
+    [userLocation, fetchAttendanceRecord, fetchAttendanceHistory]
+  );
 
   const handleCheckOut = useCallback(async () => {
     setIsProcessing(true);
     setLocationStatus("Sending check-out request...");
     try {
       const result = await postData(`${API_BASE_URL}/check-out`, {});
-
       if (result.ok) {
-        setLocationStatus(`✅ Check-Out Success! Fetching updated status...`);
+        setLocationStatus(`✅ Check-Out Success!`);
         await fetchAttendanceRecord();
         await fetchAttendanceHistory();
       } else {
@@ -459,12 +567,121 @@ export default function AttendancePage() {
     }
   }, [fetchAttendanceRecord, fetchAttendanceHistory]);
 
+  const handleBreakIn = useCallback(async () => {
+    setIsProcessing(true);
+    setLocationStatus("Sending break-in request...");
+    try {
+      const result = await postData(`${API_BASE_URL}/break-in`, {});
+      if (result.ok) {
+        setLocationStatus(`✅ Break-In Success!`);
+        await fetchAttendanceRecord();
+        await fetchAttendanceHistory();
+      } else {
+        setLocationStatus(
+          `❌ Break-In Failed: ${result.data.message || "Server error."}`
+        );
+      }
+    } catch (error) {
+      setLocationStatus("Network error during break-in.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+
+  const handleBreakOut = useCallback(async () => {
+    setIsProcessing(true);
+    setLocationStatus("Sending break-out request...");
+    try {
+      const result = await postData(`${API_BASE_URL}/break-out`, {});
+      if (result.ok) {
+        setLocationStatus(`✅ Break-Out Success!`);
+        await fetchAttendanceRecord();
+        await fetchAttendanceHistory();
+      } else {
+        setLocationStatus(
+          `❌ Break-Out Failed: ${result.data.message || "Server error."}`
+        );
+      }
+    } catch (error) {
+      setLocationStatus("Network error during break-out.");
+    } finally {
+      setIsProcessing(false);
+    }
+  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+
   const refreshAll = useCallback(() => {
     fetchAttendanceRecord();
     fetchAttendanceHistory();
-  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+    fetchQueries();
+  }, [fetchAttendanceRecord, fetchAttendanceHistory, fetchQueries]);
 
-  // --- DERIVED STATE ---
+  const handleSubmitQuery = useCallback(async () => {
+    if (!querySubject.trim() || !queryMessage.trim()) {
+      setQueryStatus("❌ Subject and message are required.");
+      return;
+    }
+    setIsSubmittingQuery(true);
+    setQueryStatus("Submitting your query...");
+    try {
+      let proofUrl = null;
+      if (queryProofFile) {
+        const formData = new FormData();
+        formData.append("selfie", queryProofFile);
+        const token = window.localStorage?.getItem("token");
+        const uploadRes = await fetch(`${API_BASE_URL}/upload-selfie`, {
+          method: "POST",
+          headers: {
+            ...(token && { Authorization: `Bearer ${token}` }),
+          },
+          body: formData,
+        });
+        const uploadData = await uploadRes.json();
+        if (uploadRes.ok && uploadData.fileUrl) {
+          proofUrl = uploadData.fileUrl;
+        } else {
+          setQueryStatus("❌ Failed to upload proof file.");
+          setIsSubmittingQuery(false);
+          return;
+        }
+      }
+      const queryData = {
+        subject: querySubject,
+        message: queryMessage,
+        proofurl: proofUrl,
+      };
+      const result = await postData(`${API_BASE_URL}/query`, queryData);
+      if (result.ok) {
+        setQueryStatus("✅ Query submitted successfully!");
+        setQuerySubject("");
+        setQueryMessage("");
+        setQueryProofFile(null);
+        if (proofInputRef.current) proofInputRef.current.value = "";
+        await fetchQueries();
+        setTimeout(() => setShowQueryForm(false), 1500);
+      } else {
+        setQueryStatus(
+          `❌ Query submission failed: ${
+            result.data.message || "Server error."
+          }`
+        );
+      }
+    } catch (error) {
+      setQueryStatus("❌ Network error during query submission.");
+    } finally {
+      setIsSubmittingQuery(false);
+    }
+  }, [querySubject, queryMessage, queryProofFile, fetchQueries]);
+
+  const handleProofFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (file) {
+        setQueryProofFile(file);
+      }
+    },
+    []
+  );
+
   const isCheckInBlocked =
     isProcessing || loading || isButtonDisabled || !!record?.CheckInAt;
   const isCheckOutBlocked =
@@ -475,581 +692,453 @@ export default function AttendancePage() {
     return calculateDuration(record.CheckInAt, record.CheckOutAt);
   }, [record]);
 
-  // --- RENDER ---
+  const currentBreakDuration = useMemo(() => {
+    if (!record || !record.BreakInAt) return "00:00";
+    return calculateDuration(record.BreakInAt, record.BreakOutAt);
+  }, [record]);
+
+  const getStatusBadge = (status: string) => {
+    const statusColors: Record<string, string> = {
+      Pending:
+        "bg-gradient-to-r from-yellow-100 to-amber-100 text-yellow-800 border-yellow-300",
+      Resolved:
+        "bg-gradient-to-r from-green-100 to-emerald-100 text-green-800 border-green-300",
+      Rejected:
+        "bg-gradient-to-r from-red-100 to-pink-100 text-red-800 border-red-300",
+    };
+    return (
+      statusColors[status] ||
+      "bg-gradient-to-r from-gray-100 to-slate-100 text-gray-800 border-gray-300"
+    );
+  };
+
   return (
-    <div className="p-4 space-y-6 max-w-lg mx-auto bg-white shadow-2xl rounded-xl border border-gray-100 font-sans">
-      <h1 className="text-2xl font-extrabold text-indigo-700 border-b-4 border-indigo-100 pb-3 flex items-center gap-2">
-        <Clock className="w-6 h-6" /> Employee Attendance Portal
-      </h1>
-
-      {/* Location Status */}
-      <div className="text-sm p-3 bg-indigo-50 rounded-lg shadow-inner">
-        <p className="font-medium text-indigo-700 mb-1">Live Location Check:</p>
-        <span
-          className={
-            isButtonDisabled
-              ? "text-red-600 font-bold text-base"
-              : "text-green-600 font-bold text-base"
-          }
-        >
-          {locationStatus}
-        </span>
-      </div>
-
-      {/* Today's Status Card */}
-      <div className="bg-white border border-gray-200 rounded-xl p-5 shadow-lg">
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2 text-gray-700">
-          <Calendar className="w-5 h-5 text-indigo-500" /> Today's Record
-        </h2>
-        {loading ? (
-          <div className="text-gray-500 flex items-center justify-center p-4">
-            <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Loading…
+    <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-purple-50 to-pink-50 p-4 md:p-8">
+      <div className="max-w-5xl mx-auto space-y-6">
+        {/* Header */}
+        <div className="bg-white rounded-2xl shadow-2xl p-6 border border-indigo-100 backdrop-blur-lg bg-opacity-90">
+          <div className="flex items-center justify-between">
+            <h1 className="text-3xl font-extrabold bg-gradient-to-r from-indigo-600 to-purple-600 bg-clip-text text-transparent flex items-center gap-3">
+              <Clock className="w-8 h-8 text-indigo-600 animate-pulse" />
+              Attendance Portal
+            </h1>
+            <Button
+              variant="secondary"
+              onClick={refreshAll}
+              className="px-4 py-2"
+              disabled={isProcessing || loading}
+            >
+              <RefreshCw
+                className={`w-5 h-5 ${
+                  isProcessing || loading ? "animate-spin" : ""
+                }`}
+              />
+            </Button>
           </div>
-        ) : (
-          <div className="grid grid-cols-3 gap-4 text-center">
-            <div className="p-3 bg-green-50 rounded-lg border border-green-200">
-              <p className="text-xs text-gray-500">Check-in</p>
-              <p className="font-extrabold text-lg text-green-700 mt-1">
-                {formatTime(record?.CheckInAt)}
-              </p>
+        </div>
+
+        {/* Location Status Card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90 transform hover:scale-[1.02] transition-all duration-300">
+          <div className="flex items-start gap-4">
+            <div
+              className={`p-3 rounded-xl ${
+                isButtonDisabled ? "bg-red-100" : "bg-green-100"
+              }`}
+            >
+              <MapPin
+                className={`w-6 h-6 ${
+                  isButtonDisabled ? "text-red-600" : "text-green-600"
+                }`}
+              />
             </div>
-
-            <div className="p-3 bg-red-50 rounded-lg border border-red-200">
-              <p className="text-xs text-gray-500">Check-out</p>
-              <p className="font-extrabold text-lg text-red-700 mt-1">
-                {formatTime(record?.CheckOutAt)}
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-gray-600 mb-1">
+                Live Location Status
               </p>
-            </div>
-
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <p className="text-xs text-gray-500">Duration</p>
-              <p className="font-extrabold text-lg text-blue-700 mt-1">
-                {currentDuration}
-              </p>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Action Buttons */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <Button
-          onClick={handleCheckIn}
-          disabled={isCheckInBlocked}
-          className="flex-1 py-3"
-        >
-          {isProcessing && !record?.CheckInAt ? "Checking In..." : "Check In"}
-        </Button>
-
-        <Button
-          variant="secondary"
-          onClick={handleCheckOut}
-          disabled={isCheckOutBlocked}
-          className="flex-1 py-3"
-        >
-          {isProcessing && record?.CheckInAt && !record?.CheckOutAt
-            ? "Checking Out..."
-            : "Check Out"}
-        </Button>
-
-        <Button
-          variant="secondary"
-          onClick={refreshAll}
-          className="w-16 flex items-center justify-center"
-          disabled={isProcessing || loading}
-        >
-          <RefreshCw
-            className={`w-5 h-5 ${
-              isProcessing || loading ? "animate-spin" : ""
-            }`}
-          />
-        </Button>
-      </div>
-
-      {/* Attendance History */}
-      <div className="mt-6">
-        <h2 className="text-xl font-bold text-gray-700 mb-3 border-b pb-2">
-          Recent Attendance History
-        </h2>
-
-        {historyLoading ? (
-          <div className="text-gray-500 flex items-center justify-center p-4">
-            <RefreshCw className="w-5 h-5 animate-spin mr-2" /> Loading History…
-          </div>
-        ) : history.length === 0 ? (
-          <p className="text-gray-500 p-4 bg-gray-50 rounded-lg">
-            No recent attendance records found.
-          </p>
-        ) : (
-          <div className="space-y-2 max-h-60 overflow-y-auto pr-2">
-            {history.map((hist, index) => (
-              <div
-                key={hist.WorkDate || index}
-                className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition duration-200"
+              <p
+                className={`text-lg font-bold ${
+                  isButtonDisabled ? "text-red-600" : "text-green-600"
+                }`}
               >
-                <div className="flex flex-col">
-                  <span className="font-medium text-sm text-indigo-600">
-                    {formatDate(hist.WorkDate)}
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {calculateDuration(hist.CheckInAt, hist.CheckOutAt)} Total
-                  </span>
-                </div>
-                <div className="flex space-x-4 text-sm">
-                  <div className="text-green-600 font-semibold flex items-center gap-1">
-                    <CheckCircle className="w-4 h-4" />
-                    {formatTime(hist.CheckInAt)}
-                  </div>
-                  <div
-                    className={`font-semibold flex items-center gap-1 ${
-                      hist.CheckOutAt ? "text-red-600" : "text-yellow-600"
-                    }`}
-                  >
-                    <XCircle className="w-4 h-4" />
-                    {formatTime(hist.CheckOutAt)}
-                  </div>
-                </div>
-              </div>
-            ))}
+                {locationStatus}
+              </p>
+            </div>
           </div>
-        )}
+        </div>
+
+        {/* Today's Record Card */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+          <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800">
+            <Calendar className="w-6 h-6 text-indigo-600" />
+            Today's Record
+          </h2>
+          {loading ? (
+            <div className="text-gray-500 flex items-center justify-center p-8">
+              <RefreshCw className="w-6 h-6 animate-spin mr-3" />
+              <span className="text-lg">Loading...</span>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Check-in Time
+                </p>
+                <p className="text-3xl font-extrabold text-green-700">
+                  {formatTime(record?.CheckInAt)}
+                </p>
+              </div>
+
+              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Check-out Time
+                </p>
+                <p className="text-3xl font-extrabold text-red-700">
+                  {formatTime(record?.CheckOutAt)}
+                </p>
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Total Duration
+                </p>
+                <p className="text-3xl font-extrabold text-blue-700">
+                  {currentDuration}
+                </p>
+              </div>
+
+              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Break-In Time
+                </p>
+                <p className="text-3xl font-extrabold text-green-700">
+                  {formatTime(record?.BreakInAt)}
+                </p>
+              </div>
+
+              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Break-out Time
+                </p>
+                <p className="text-3xl font-extrabold text-red-700">
+                  {formatTime(record?.BreakOutAt)}
+                </p>
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                <p className="text-sm font-semibold text-gray-600 mb-2">
+                  Total Duration
+                </p>
+                <p className="text-3xl font-extrabold text-blue-700">
+                  {currentBreakDuration}
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Action Buttons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Button
+            onClick={handleCheckIn}
+            disabled={isCheckInBlocked}
+            variant="success"
+            className="w-full py-4 text-lg"
+          >
+            {isProcessing && !record?.CheckInAt ? (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                Checking In...
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                Check In
+              </span>
+            )}
+          </Button>
+
+          <Button
+            variant="danger"
+            onClick={handleCheckOut}
+            disabled={isCheckOutBlocked}
+            className="w-full py-4 text-lg"
+          >
+            {isProcessing && record?.CheckInAt && !record?.CheckOutAt ? (
+              <span className="flex items-center justify-center gap-2">
+                <RefreshCw className="w-5 h-5 animate-spin" />
+                Checking Out...
+              </span>
+            ) : (
+              <span className="flex items-center justify-center gap-2">
+                <XCircle className="w-5 h-5" />
+                Check Out
+              </span>
+            )}
+          </Button>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <Button onClick={handleBreakIn} disabled={record?.BreakInAt}>
+            Break In
+          </Button>
+          <Button
+            onClick={handleBreakOut}
+            disabled={!record?.BreakInAt || record?.BreakOutAt}
+          >
+            Break Out
+          </Button>
+        </div>
+
+        <input
+          type="file"
+          accept="image/*"
+          capture="user"
+          ref={fileInputRef}
+          onChange={handleSelfieCapture}
+          style={{ display: "none" }}
+        />
+
+        {/* Attendance History */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+            <Calendar className="w-6 h-6 text-indigo-600" />
+            Attendance History
+          </h2>
+          {historyLoading ? (
+            <div className="text-gray-500 flex items-center justify-center p-8">
+              <RefreshCw className="w-6 h-6 animate-spin mr-3" />
+              <span>Loading History...</span>
+            </div>
+          ) : history.length === 0 ? (
+            <p className="text-gray-500 p-6 bg-gray-50 rounded-xl text-center">
+              No records found.
+            </p>
+          ) : (
+            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+              {history.map((hist, index) => (
+                <div
+                  key={hist.WorkDate || index}
+                  className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                >
+                  <div className="flex flex-col mb-3 md:mb-0">
+                    <span className="font-bold text-lg text-indigo-600">
+                      {formatDate(hist.WorkDate)}
+                    </span>
+                    <span className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                      <Clock className="w-4 h-4" />
+                      {calculateDuration(hist.CheckInAt, hist.CheckOutAt)} Total
+                    </span>
+                  </div>
+                  <div className="flex gap-6 text-sm">
+                    <div className="flex flex-col items-center bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                      <CheckCircle className="w-5 h-5 text-green-600 mb-1" />
+                      <span className="text-xs text-gray-500">In</span>
+                      <span className="font-bold text-green-700">
+                        {formatTime(hist.CheckInAt)}
+                      </span>
+                    </div>
+                    <div
+                      className={`flex flex-col items-center px-4 py-2 rounded-lg border ${
+                        hist.CheckOutAt
+                          ? "bg-red-50 border-red-200"
+                          : "bg-yellow-50 border-yellow-200"
+                      }`}
+                    >
+                      <XCircle
+                        className={`w-5 h-5 mb-1 ${
+                          hist.CheckOutAt ? "text-red-600" : "text-yellow-600"
+                        }`}
+                      />
+                      <span className="text-xs text-gray-500">Out</span>
+                      <span
+                        className={`font-bold ${
+                          hist.CheckOutAt ? "text-red-700" : "text-yellow-700"
+                        }`}
+                      >
+                        {formatTime(hist.CheckOutAt)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Query Section */}
+        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
+              <MessageSquare className="w-6 h-6 text-indigo-600" />
+              Support Queries
+            </h2>
+            <Button
+              onClick={() => setShowQueryForm(!showQueryForm)}
+              className="px-4 py-2"
+            >
+              {showQueryForm ? "Hide Form" : "Raise Query"}
+            </Button>
+          </div>
+
+          {showQueryForm && (
+            <div className="mb-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6 space-y-4 animate-in">
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Subject *
+                </label>
+                <input
+                  type="text"
+                  value={querySubject}
+                  onChange={(e) => setQuerySubject(e.target.value)}
+                  placeholder="e.g., Forgot to Check Out"
+                  className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                  disabled={isSubmittingQuery}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2">
+                  Message *
+                </label>
+                <textarea
+                  value={queryMessage}
+                  onChange={(e) => setQueryMessage(e.target.value)}
+                  placeholder="Describe your query in detail..."
+                  rows={4}
+                  className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all duration-300"
+                  disabled={isSubmittingQuery}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4" />
+                  Attach Proof (Optional)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  ref={proofInputRef}
+                  onChange={handleProofFileChange}
+                  className="w-full text-sm text-gray-600 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 file:cursor-pointer transition-all duration-300"
+                  disabled={isSubmittingQuery}
+                />
+                {queryProofFile && (
+                  <p className="text-sm text-green-600 mt-2 flex items-center gap-2 bg-green-50 px-3 py-2 rounded-lg">
+                    <CheckCircle className="w-4 h-4" />
+                    {queryProofFile.name}
+                  </p>
+                )}
+              </div>
+
+              {queryStatus && (
+                <div
+                  className={`p-4 rounded-xl font-medium ${
+                    queryStatus.includes("✅")
+                      ? "bg-green-100 text-green-800"
+                      : "bg-red-100 text-red-800"
+                  }`}
+                >
+                  {queryStatus}
+                </div>
+              )}
+
+              <Button
+                onClick={handleSubmitQuery}
+                disabled={
+                  isSubmittingQuery ||
+                  !querySubject.trim() ||
+                  !queryMessage.trim()
+                }
+                className="w-full py-3 text-lg"
+              >
+                {isSubmittingQuery ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Submitting...
+                  </span>
+                ) : (
+                  "Submit Query"
+                )}
+              </Button>
+            </div>
+          )}
+
+          {/* Query History */}
+          <div>
+            <h3 className="text-lg font-bold text-gray-700 mb-4 border-b-2 border-gray-200 pb-2">
+              Your Query History
+            </h3>
+            {queriesLoading ? (
+              <div className="text-gray-500 flex items-center justify-center p-8">
+                <RefreshCw className="w-6 h-6 animate-spin mr-3" />
+                <span>Loading Queries...</span>
+              </div>
+            ) : queries.length === 0 ? (
+              <p className="text-gray-500 p-6 bg-gray-50 rounded-xl text-center">
+                No queries submitted yet.
+              </p>
+            ) : (
+              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                {queries.map((query) => (
+                  <div
+                    key={query.QueryId}
+                    className="bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl p-5 shadow-md hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01]"
+                  >
+                    <div className="flex flex-col md:flex-row justify-between items-start gap-3 mb-3">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-gray-800 text-lg mb-1">
+                          {query.Subject}
+                        </h3>
+                        <p className="text-xs text-gray-400 flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          {formatDateTime(query.RaisedAt)}
+                        </p>
+                      </div>
+                      <span
+                        className={`px-4 py-2 rounded-full text-xs font-bold border-2 ${getStatusBadge(
+                          query.Status
+                        )} shadow-sm`}
+                      >
+                        {query.Status}
+                      </span>
+                    </div>
+
+                    <p className="text-sm text-gray-700 mb-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                      {query.Message}
+                    </p>
+
+                    {query.Proofurl && (
+                      <div className="mb-3">
+                        <a
+                          href={query.Proofurl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-lg w-fit transition-all duration-300 hover:bg-indigo-100"
+                        >
+                          <Paperclip className="w-4 h-4" />
+                          View Attached Proof
+                        </a>
+                      </div>
+                    )}
+
+                    {query.ResolutionNotes && (
+                      <div className="mt-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
+                        <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1">
+                          <CheckCircle className="w-4 h-4" />
+                          Resolution Notes:
+                        </p>
+                        <p className="text-sm text-green-700 font-medium">
+                          {query.ResolutionNotes}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
 }
-
-// "use client";
-// import { useEffect, useState, useCallback, useMemo } from "react";
-// import { Button } from "@/components/ui/button";
-// // REMOVED: import { getDistance } from "geolib";
-// import { Clock, Calendar, CheckCircle, XCircle } from "lucide-react";
-
-// // --- CONFIGURATION & TYPES ---
-// const OFFICE_RADIUS_METERS = 100;
-// const API_BASE_URL = "http://localhost:5050/attendance";
-
-// interface Coordinates {
-//   latitude: number;
-//   longitude: number;
-// }
-
-// interface AttendanceRecord {
-//   WorkDate: string; // Date of the record
-//   CheckInAt: string | null;
-//   CheckOutAt: string | null;
-//   // Add other fields you expect
-// }
-
-// // --- GEOLIB REPLACEMENT (Haversine Formula for distance) ---
-
-// /**
-//  * Calculates the distance between two geographical points (in meters)
-//  * using the Haversine formula.
-//  * @param start - The starting coordinate {latitude, longitude}.
-//  * @param end - The ending coordinate {latitude, longitude}.
-//  * @returns Distance in meters.
-//  */
-// const getDistanceInMeters = (start: Coordinates, end: Coordinates): number => {
-//   const R = 6371000; // Radius of Earth in meters
-//   const lat1 = start.latitude;
-//   const lon1 = start.longitude;
-//   const lat2 = end.latitude;
-//   const lon2 = end.longitude;
-
-//   const toRad = (angle: number) => (Math.PI / 180) * angle;
-
-//   const dLat = toRad(lat2 - lat1);
-//   const dLon = toRad(lon2 - lon1);
-
-//   const a =
-//     Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-//     Math.cos(toRad(lat1)) *
-//       Math.cos(toRad(lat2)) *
-//       Math.sin(dLon / 2) *
-//       Math.sin(dLon / 2);
-
-//   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-
-//   // Distance in meters
-//   return R * c;
-// };
-
-// // --- API HELPERS (No change needed) ---
-
-// const postData = async (url: string, data: any) => {
-//   const token = localStorage.getItem("token");
-//   const response = await fetch(url, {
-//     method: "POST",
-//     headers: {
-//       "Content-Type": "application/json",
-//       ...(token && { Authorization: `Bearer ${token}` }),
-//     },
-//     body: JSON.stringify(data),
-//   });
-//   return {
-//     data: await response.json().catch(() => ({ message: response.statusText })),
-//     ok: response.ok,
-//     status: response.status,
-//   };
-// };
-
-// const fetchData = async (url: string) => {
-//   const token = localStorage.getItem("token");
-//   const response = await fetch(url, {
-//     method: "GET",
-//     headers: {
-//       ...(token && { Authorization: `Bearer ${token}` }),
-//     },
-//   });
-//   return {
-//     data: await response.json().catch(() => ({ message: response.statusText })),
-//     ok: response.ok,
-//     status: response.status,
-//   };
-// };
-
-// // ===============================================
-
-// // Helper function to format UTC ISO string to readable local time (H:mm A)
-// const formatTime = (isoString: string | null): string => {
-//   if (!isoString) return "—";
-//   try {
-//     const date = new Date(isoString);
-//     return date.toLocaleTimeString("en-IN", {
-//       hour: "2-digit",
-//       minute: "2-digit",
-//       hour12: true,
-//     });
-//   } catch {
-//     return "Invalid Time";
-//   }
-// };
-
-// // Helper function to format UTC ISO string to readable date (Mon, Oct 7)
-// const formatDate = (isoString: string): string => {
-//   try {
-//     const date = new Date(isoString);
-//     return date.toLocaleDateString("en-IN", {
-//       weekday: "short",
-//       month: "short",
-//       day: "numeric",
-//     });
-//   } catch {
-//     return "Invalid Date";
-//   }
-// };
-
-// export default function AttendancePage() {
-//   // STATE FOR ATTENDANCE RECORD (Replaces Redux state)
-//   const [record, setRecord] = useState<AttendanceRecord | null>(null);
-//   const [history, setHistory] = useState<AttendanceRecord[]>([]); // NEW: History state
-//   const [loading, setLoading] = useState<boolean>(true);
-//   const [historyLoading, setHistoryLoading] = useState<boolean>(false); // NEW: History loading state
-
-//   // STATE FOR GEO-LOCATION AND STATUS
-//   const [officeLocation, setOfficeLocation] = useState<Coordinates | null>(
-//     null
-//   );
-//   const [userLocation, setUserLocation] = useState<Coordinates | null>(null);
-//   const [locationStatus, setLocationStatus] = useState<string>(
-//     "Initializing location checks..."
-//   );
-//   const [isButtonDisabled, setIsButtonDisabled] = useState<boolean>(true);
-//   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-
-//   // --- API FUNCTIONS ---
-
-//   // Function to fetch the user's current attendance record
-//   const fetchAttendanceRecord = useCallback(async () => {
-//     setLoading(true);
-//     try {
-//       const res = await fetchData(`${API_BASE_URL}/my`);
-//       if (res.ok) {
-//         setRecord(res.data.record || null);
-//       } else {
-//         console.error("Failed to fetch attendance record:", res.data.message);
-//         setRecord(null);
-//       }
-//     } catch (error) {
-//       console.error("Network error fetching record:", error);
-//       setRecord(null);
-//     } finally {
-//       setLoading(false);
-//     }
-//   }, []);
-
-//   // Function to fetch attendance history
-//   const fetchAttendanceHistory = useCallback(async () => {
-//     setHistoryLoading(true);
-//     try {
-//       const res = await fetchData(`${API_BASE_URL}/history`);
-//       if (res.ok) {
-//         // Assuming this endpoint returns { history: [...] }
-//         console.log(res.data.record);
-//         setHistory(res.data.record || []);
-//       } else {
-//         console.error("Failed to fetch attendance history:", res.data.message);
-//         setHistory([]);
-//       }
-//     } catch (error) {
-//       console.error("Network error fetching history:", error);
-//       setHistory([]);
-//     } finally {
-//       setHistoryLoading(false);
-//     }
-//   }, []);
-
-//   // Initial Data Fetch (Today's record and office location)
-//   useEffect(() => {
-//     fetchAttendanceRecord();
-//     fetchAttendanceHistory(); // Start history fetch
-
-//     const fetchOfficeLocation = async () => {
-//       setLocationStatus("Fetching office coordinates...");
-//       try {
-//         const res = await fetchData(`${API_BASE_URL}/office/location`);
-
-//         if (res.ok) {
-//           setLocationStatus(
-//             "Office coordinates received. Checking user GPS..."
-//           );
-//           setOfficeLocation({
-//             latitude: parseFloat(res.data.latitude),
-//             longitude: parseFloat(res.data.longitude),
-//           });
-//         } else {
-//           setLocationStatus(
-//             `Error: Could not fetch office location. Reason: ${
-//               res.data.message || res.status
-//             }`
-//           );
-//         }
-//       } catch (e) {
-//         setLocationStatus(
-//           "Network error fetching office location. Is the server running?"
-//         );
-//       }
-//     };
-//     fetchOfficeLocation();
-//   }, [fetchAttendanceRecord, fetchAttendanceHistory]);
-
-//   // Watch User Location and calculate distance
-//   useEffect(() => {
-//     if (!officeLocation) return;
-
-//     setLocationStatus("Office coordinates received. Checking user GPS...");
-
-//     const watchId = navigator.geolocation.watchPosition(
-//       (position) => {
-//         const currentLoc = {
-//           latitude: position.coords.latitude,
-//           longitude: position.coords.longitude,
-//         };
-//         setUserLocation(currentLoc);
-//         // FIX: Use the local getDistanceInMeters function
-//         const distance = getDistanceInMeters(currentLoc, officeLocation);
-//         const isTooFar = distance > OFFICE_RADIUS_METERS;
-//         setLocationStatus(
-//           isTooFar
-//             ? `Too Far: ${distance.toFixed(0)}m away.`
-//             : `You are ${distance.toFixed(0)}m away. Ready.`
-//         );
-//         setIsButtonDisabled(isTooFar);
-//       },
-//       (err) => {
-//         setLocationStatus(`Location Error: ${err.message}.`);
-//         setIsButtonDisabled(true);
-//       },
-//       { enableHighAccuracy: true }
-//     );
-
-//     return () => navigator.geolocation.clearWatch(watchId);
-//   }, [officeLocation]);
-
-//   // --- Button Handlers ---
-//   const handleCheckIn = useCallback(async () => {
-//     if (!userLocation || isProcessing) return;
-
-//     setIsProcessing(true);
-//     setLocationStatus("Sending check-in request...");
-
-//     try {
-//       const result = await postData(`${API_BASE_URL}/check-in`, {
-//         userLat: userLocation.latitude,
-//         userLong: userLocation.longitude,
-//       });
-
-//       if (result.ok) {
-//         setLocationStatus(`✅ Check-In Success! Fetching updated status...`);
-//         // Refresh both today's record and history
-//         await fetchAttendanceRecord();
-//         await fetchAttendanceHistory();
-//       } else if (result.status === 403) {
-//         setLocationStatus(`❌ Check-In Failed: ${result.data.message}`);
-//       } else {
-//         setLocationStatus(
-//           `❌ Check-In Failed: ${result.data.message || "Server error."}`
-//         );
-//       }
-//     } catch (error) {
-//       setLocationStatus("Network error during check-in.");
-//     } finally {
-//       setIsProcessing(false);
-//     }
-//   }, [
-//     userLocation,
-//     isProcessing,
-//     fetchAttendanceRecord,
-//     fetchAttendanceHistory,
-//   ]);
-
-//   const handleCheckOut = useCallback(async () => {
-//     setIsProcessing(true);
-//     setLocationStatus("Sending check-out request...");
-//     try {
-//       const result = await postData(`${API_BASE_URL}/check-out`, {});
-
-//       if (result.ok) {
-//         setLocationStatus(`✅ Check-Out Success! Fetching updated status...`);
-//         // Refresh both today's record and history
-//         await fetchAttendanceRecord();
-//         await fetchAttendanceHistory();
-//       } else {
-//         setLocationStatus(
-//           `❌ Check-Out Failed: ${result.data.message || "Server error."}`
-//         );
-//       }
-//     } catch (error) {
-//       setLocationStatus("Network error during check-out.");
-//     } finally {
-//       setIsProcessing(false);
-//     }
-//   }, [fetchAttendanceRecord, fetchAttendanceHistory]);
-
-//   // Determine button state based on record and local geo-check
-//   const isCheckInBlocked =
-//     isProcessing || loading || isButtonDisabled || !!record?.CheckInAt;
-//   const isCheckOutBlocked =
-//     isProcessing || loading || !record?.CheckInAt || !!record?.CheckOutAt;
-
-//   const refreshAll = useCallback(() => {
-//     fetchAttendanceRecord();
-//     fetchAttendanceHistory();
-//   }, [fetchAttendanceRecord, fetchAttendanceHistory]);
-
-//   return (
-//     <div className="p-4 space-y-6 max-w-lg mx-auto bg-white shadow-xl rounded-xl">
-//       <h1 className="text-2xl font-bold text-gray-800 border-b pb-2">
-//         Employee Attendance Portal
-//       </h1>
-
-//       {/* Status & Live Check-in/out */}
-//       <div className="space-y-4">
-//         <div className="text-sm p-3 bg-indigo-100 rounded-lg shadow-inner">
-//           <p className="font-medium text-indigo-700">Location Status:</p>
-//           <span
-//             className={
-//               isButtonDisabled
-//                 ? "text-red-700 font-bold"
-//                 : "text-green-700 font-bold"
-//             }
-//           >
-//             {locationStatus}
-//           </span>
-//         </div>
-
-//         <div className="bg-white border rounded-lg p-4 shadow-md">
-//           <h2 className="text-xl font-semibold mb-3 flex items-center gap-2 text-gray-700">
-//             <Calendar className="w-5 h-5 text-indigo-500" /> Today's Status
-//           </h2>
-//           {loading ? (
-//             <div className="text-gray-500">Loading today's record…</div>
-//           ) : (
-//             <div className="grid grid-cols-2 gap-4">
-//               <div className="flex items-center gap-2">
-//                 <CheckCircle className="w-5 h-5 text-green-500" />
-//                 <div>
-//                   <p className="text-sm text-gray-500">Check-in:</p>
-//                   <p className="font-bold text-gray-800">
-//                     {formatTime(record?.CheckInAt)}
-//                   </p>
-//                 </div>
-//               </div>
-//               <div className="flex items-center gap-2">
-//                 <XCircle className="w-5 h-5 text-red-500" />
-//                 <div>
-//                   <p className="text-sm text-gray-500">Check-out:</p>
-//                   <p className="font-bold text-gray-800">
-//                     {formatTime(record?.CheckOutAt)}
-//                   </p>
-//                 </div>
-//               </div>
-//             </div>
-//           )}
-//         </div>
-//       </div>
-
-//       {/* Action Buttons */}
-//       <div className="flex flex-col sm:flex-row gap-3">
-//         <Button
-//           onClick={handleCheckIn}
-//           disabled={isCheckInBlocked}
-//           className="flex-1 bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition duration-200"
-//         >
-//           {isProcessing ? "Processing..." : "Check In"}
-//         </Button>
-
-//         <Button
-//           variant="secondary"
-//           onClick={handleCheckOut}
-//           disabled={isCheckOutBlocked}
-//           className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 font-bold py-3 rounded-lg transition duration-200"
-//         >
-//           Check Out
-//         </Button>
-
-//         <Button
-//           onClick={refreshAll}
-//           variant="outline"
-//           className="w-1/4 sm:w-auto text-gray-600 border-gray-300 hover:bg-gray-100"
-//         >
-//           Refresh
-//         </Button>
-//       </div>
-
-//       {/* Attendance History */}
-//       <div className="space-y-3 pt-4 border-t mt-6 border-gray-200">
-//         <h2 className="text-xl font-semibold text-gray-800">
-//           Attendance History
-//         </h2>
-
-//         {historyLoading ? (
-//           <div className="text-gray-500">Loading history...</div>
-//         ) : history.length === 0 ? (
-//           <div className="text-gray-500 p-4 border rounded-lg">
-//             No past attendance records found.
-//           </div>
-//         ) : (
-//           <div className="space-y-2 max-h-60 overflow-y-auto">
-//             {history.map((h) => (
-//               <div
-//                 key={h.WorkDate}
-//                 className="flex justify-between items-center p-3 bg-white border border-gray-100 rounded-lg shadow-sm hover:shadow-md transition duration-150"
-//               >
-//                 <div className="font-medium text-gray-800 w-1/4">
-//                   {formatDate(h.WorkDate)}
-//                 </div>
-//                 <div className="flex items-center gap-1 text-sm text-gray-600 w-3/4 justify-end">
-//                   <Clock className="w-4 h-4 text-indigo-400" />
-//                   <span className="font-mono">{formatTime(h.CheckInAt)}</span>
-//                   <span className="mx-2 text-gray-400">—</span>
-//                   <span className="font-mono">{formatTime(h.CheckOutAt)}</span>
-//                 </div>
-//               </div>
-//             ))}
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
