@@ -166,6 +166,12 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [recurrence, setRecurrence] = useState<{
+    isDaily: boolean;
+    totalDays: number;
+    daysCompleted: number;
+  } | null>(null);
 
   // Get current user from Redux state
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
@@ -178,9 +184,15 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
         setTask(taskResponse.data);
 
         // Fetch checklist items
-        const checklistResponse = await api.get(`/tasks/${taskId}/checklist`);
-        console.log("Checklist response:", checklistResponse.data);
-        console.log("Checklist items:", checklistResponse.data.items);
+        // const checklistResponse = await api.get(`/tasks/${taskId}/checklist`);
+        // console.log("Checklist response:", checklistResponse.data);
+        // console.log("Checklist items:", checklistResponse.data.items);
+
+        const checklistUrl = selectedDate
+          ? `/tasks/${taskId}/checklist?date=${selectedDate}`
+          : `/tasks/${taskId}/checklist`;
+
+        const checklistResponse = await api.get(checklistUrl);
 
         const items = checklistResponse.data.items || [];
         console.log("Setting checklist items:", items.length, "items");
@@ -207,7 +219,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     };
 
     fetchTaskData();
-  }, [taskId]);
+  }, [taskId, selectedDate]);
 
   const [reviewReason, setReviewReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -231,6 +243,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
       await api.patch(`/tasks/${taskId}/checklist/${itemId}`, {
         completed,
         notes: notes || "",
+        date: selectedDate || undefined,
       });
     } catch (error: any) {
       console.error("Failed to update checklist item:", error);
@@ -695,6 +708,24 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm font-medium">View Date:</label>
+                  <input
+                    type="date"
+                    value={selectedDate ?? ""}
+                    onChange={(e) => setSelectedDate(e.target.value || null)}
+                    className="border rounded px-2 py-1 text-sm"
+                  />
+                </div>
+
+                {recurrence?.isDaily && (
+                  <div className="text-sm text-gray-600">
+                    Day {recurrence.daysCompleted} of {recurrence.totalDays}
+                  </div>
+                )}
+              </div>
+
               {checklistItems.length === 0 ? (
                 <div className="text-center py-8">
                   <p className="text-muted-foreground">

@@ -70,6 +70,11 @@ interface Branch {
   IsActive: boolean;
 }
 
+interface Position {
+  PositionId: string;
+  Name: string;
+}
+
 export function TaskCreation() {
   const dispatch = useDispatch();
   const router = useRouter();
@@ -81,6 +86,9 @@ export function TaskCreation() {
   // Get users and branches from Redux store
   const { items: users } = useSelector((state: RootState) => state.users);
   const { items: branches } = useSelector((state: RootState) => state.branches);
+
+  const [positions, setPositions] = useState<Position[]>([]); // 👈 State for all positions
+  const [selectedPosition, setSelectedPosition] = useState<string>(""); // 👈 State for the selected position filter
 
   useEffect(() => {
     // Fetch users and branches when component mounts
@@ -139,9 +147,45 @@ export function TaskCreation() {
     }
   }, [branches, currentUser]);
 
+  // Inside the TaskCreation component, with other useEffects
+
+  useEffect(() => {
+    const fetchPositions = async () => {
+      try {
+        const response = await api.get("/positions");
+        setPositions(response.data.items || []);
+      } catch (error) {
+        console.error("Failed to fetch positions:", error);
+      }
+    };
+
+    fetchPositions();
+  }, []); // Empty dependency array means this runs once on mount
+
   // State for branch users
   const [branchUsers, setBranchUsers] = useState<User[]>([]);
   const [loadingBranchUsers, setLoadingBranchUsers] = useState(false);
+
+  const [availablePositions, setAvailablePositions] = useState<string[]>([]);
+
+  // --- ADD THIS useEffect HOOK ---
+  useEffect(() => {
+    if (branchUsers.length > 0) {
+      // Extract unique position names from the list of users
+      const positions = [
+        ...new Set(
+          branchUsers.map((user: any) => user.PositionName).filter(Boolean)
+        ),
+      ];
+      setAvailablePositions(positions.sort());
+    } else {
+      // Clear positions if no users are loaded
+      setAvailablePositions([]);
+    }
+    // Reset the filter whenever the list of users changes
+    setSelectedPosition("");
+  }, [branchUsers]);
+  // -----------------------------
 
   const [formData, setFormData] = useState({
     title: "",
@@ -216,94 +260,57 @@ export function TaskCreation() {
 
   // Filter users based on search term, branch, and role permissions
   const filteredUsers = (() => {
-    let availableUsers: any[] = [];
+    let baseUserList: any[] = [];
 
-    // For branch managers: only show staff in their assigned branch
-    if (currentUser?.role === "branch_manager") {
-      // Branch managers can only see staff from their auto-assigned branch
-      availableUsers = branchUsers.filter(
-        (user: any) =>
-          user.RoleRank === 5 && // Only staff (rank 5)
-          (user.FullName ||
-            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
+    // Stage 1: Determine the base list of users.
+    if (formData.branchIds.length > 0) {
+      baseUserList = branchUsers;
+    } else if (currentUser?.role !== "branch_manager") {
+      baseUserList = users;
+    }
+
+    // Stage 2: Filter by role-based permissions.
+    let permittedUsers: any[] = [];
+    const userRole = currentUser?.role;
+
+    if (userRole === "branch_manager") {
+      permittedUsers = baseUserList.filter((user: any) => user.RoleRank === 5);
+    } else if (userRole === "area_manager") {
+      permittedUsers = baseUserList.filter(
+        (user: any) => (user.RoleRank || user.rank) >= 4
+      );
+    } else if (userRole === "auditor") {
+      permittedUsers = baseUserList.filter(
+        (user: any) => (user.RoleRank || user.rank) >= 3
+      );
+    } else {
+      permittedUsers = baseUserList;
+    }
+
+    // Stage 3: Filter by the selected POSITION from the dropdown.
+    let positionFilteredUsers = permittedUsers;
+    if (selectedPosition) {
+      positionFilteredUsers = permittedUsers.filter(
+        (user: any) => user.PositionName === selectedPosition
       );
     }
-    // For area managers: show staff from branches they manage
-    else if (currentUser?.role === "area_manager") {
-      if (formData.branchIds) {
-        availableUsers = branchUsers.filter(
-          (user: any) =>
-            user.RoleRank >= 4 && // Staff and branch managers
-            (user.FullName ||
-              "".toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-      } else {
-        availableUsers = users.filter(
-          (user: any) =>
-            user.rank >= 4 && // Staff and branch managers
-            (user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.email.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-      }
-    }
-    // For auditors: show all users they can audit
-    else if (currentUser?.role === "auditor") {
-      if (formData.branchIds) {
-        availableUsers = branchUsers.filter(
-          (user: any) =>
-            user.RoleRank >= 3 && // Area managers, branch managers, and staff
-            (user.FullName ||
-              "".toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.Email.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-      } else {
-        availableUsers = users.filter(
-          (user: any) =>
-            user.rank >= 3 && // Area managers, branch managers, and staff
-            (user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-              user.email.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-      }
-    }
-    // For management: show all users
-    else if (currentUser?.role === "management") {
-      if (formData.branchIds) {
-        availableUsers = branchUsers.filter(
-          (user: any) =>
-            user.FullName ||
-            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.Email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      } else {
-        availableUsers = users.filter(
-          (user: any) =>
-            user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
-    }
-    // Default fallback
-    else {
-      if (formData.branchIds) {
-        availableUsers = branchUsers.filter(
-          (user: any) =>
-            user.FullName ||
-            "".toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.Email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      } else {
-        availableUsers = users.filter(
-          (user: any) =>
-            user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            user.email.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      }
+
+    // Stage 4: Filter by the search term.
+    if (searchTerm) {
+      return positionFilteredUsers.filter(
+        (user: any) =>
+          (user.FullName || user.name || "")
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase()) ||
+          (user.Email || user.email)
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase())
+      );
     }
 
-    return availableUsers;
+    return positionFilteredUsers;
   })();
+  // -----------------------------------------------------------------
 
   // Fetch branch users when branch changes
   useEffect(() => {
@@ -777,7 +784,6 @@ export function TaskCreation() {
                   </SelectContent>
                 </Select>
               </div>
-
               {formData.scope === "daily" && formData.isRepeating ? (
                 <div className="grid grid-cols-1 gap-4">
                   <div className="grid grid-cols-2 gap-4">
@@ -835,7 +841,6 @@ export function TaskCreation() {
                   />
                 </div>
               )}
-
               {/* Branch Selection - Role-based UI */}
               {/* Branch managers don't see branch selection - auto-assigned to their branch */}
               {currentUser?.role === "branch_manager" ? (
@@ -1228,16 +1233,45 @@ export function TaskCreation() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Search Bar */}
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or email..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-10"
-              />
+            {/* --- MODIFY THIS SECTION --- */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Search Bar */}
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or email..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
+              </div>
+
+              <div>
+                <Select
+                  value={selectedPosition}
+                  onValueChange={(value) =>
+                    setSelectedPosition(value === "all" ? "" : value)
+                  }
+                  disabled={
+                    formData.branchIds.length === 0 ||
+                    availablePositions.length === 0
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filter by position..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Positions</SelectItem>
+                    {availablePositions.map((position) => (
+                      <SelectItem key={position} value={position}>
+                        {position}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
+            {/* --------------------------- */}
 
             {/* User Selection */}
             <div className="max-h-80 overflow-y-auto space-y-2">
