@@ -1,27 +1,35 @@
-"use client"
-import { useState } from "react"
-import { useRouter } from "next/navigation"
+"use client";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useDispatch } from "react-redux";
+import { logout } from "@/redux/modules/auth/actions";
 
 export type AccountDrawerProps = {
-  data: any
-}
+  data: any;
+};
 
 export function AccountDrawer({ data }: AccountDrawerProps) {
-  const [isOpen, setIsOpen] = useState(false)
-  const router = useRouter()
+  const [isOpen, setIsOpen] = useState(false);
+  const router = useRouter();
+
+  const dispatch = useDispatch();
 
   const handleToggle = () => {
-    setIsOpen(!isOpen)
-  }
+    setIsOpen(!isOpen);
+  };
 
   const handleClose = () => {
-    setIsOpen(false)
-  }
+    setIsOpen(false);
+  };
+
+  // const handleLogout = () => {
+  //   localStorage.removeItem("currentUser")
+  //   router.push("/login")
+  // }
 
   const handleLogout = () => {
-    localStorage.removeItem("currentUser")
-    router.push("/login")
-  }
+    dispatch(logout() as any);
+  };
 
   const menuItems = [
     { icon: "🏠", label: "Home", path: "/" },
@@ -30,7 +38,7 @@ export function AccountDrawer({ data }: AccountDrawerProps) {
     { icon: "💳", label: "Subscription", path: "/subscription" },
     { icon: "🛡️", label: "Security", path: "/security" },
     { icon: "⚙️", label: "Account settings", path: "/settings" },
-  ]
+  ];
 
   return (
     <div className="relative">
@@ -53,7 +61,9 @@ export function AccountDrawer({ data }: AccountDrawerProps) {
               <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                 {data?.name || "Marina Pharmacy User"}
               </h3>
-              <p className="text-sm text-gray-500 dark:text-gray-400">{data?.email || "user@marinapharmacy.com"}</p>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {data?.email || "user@marinapharmacy.com"}
+              </p>
 
               <div className="flex justify-center items-center space-x-2 mt-4">
                 {[1, 2, 3].map((i) => (
@@ -76,15 +86,21 @@ export function AccountDrawer({ data }: AccountDrawerProps) {
                 <button
                   key={item.label}
                   onClick={() => {
-                    router.push(item.path)
-                    handleClose()
+                    router.push(item.path);
+                    handleClose();
                   }}
                   className="w-full flex items-center px-4 py-3 text-left rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
                 >
-                  <span className="mr-3 text-gray-500 dark:text-gray-400">{item.icon}</span>
-                  <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">{item.label}</span>
+                  <span className="mr-3 text-gray-500 dark:text-gray-400">
+                    {item.icon}
+                  </span>
+                  <span className="flex-1 text-sm text-gray-700 dark:text-gray-300">
+                    {item.label}
+                  </span>
                   {item.badge && (
-                    <span className="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded-full">{item.badge}</span>
+                    <span className="ml-2 px-2 py-1 text-xs bg-red-500 text-white rounded-full">
+                      {item.badge}
+                    </span>
                   )}
                 </button>
               ))}
@@ -104,5 +120,5 @@ export function AccountDrawer({ data }: AccountDrawerProps) {
         </>
       )}
     </div>
-  )
+  );
 }

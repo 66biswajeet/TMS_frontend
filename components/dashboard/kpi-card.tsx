@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import { TrendingUp, TrendingDown, Minus, LucideIcon } from "lucide-react"
 
-interface KPICardProps {
+export interface KPICardProps {
   title: string
   value: string | number
   description?: string
