@@ -12,7 +12,7 @@ export interface NavItem {
 export const navigationConfig: NavItem[] = [
   {
     label: "Dashboard",
-    href: "/dashboard",
+    href: "/dashboard/management",
     icon: HomeIcon,
     roles: ["staff", "branch_manager", "area_manager", "auditor", "management", "admin"],
   },
@@ -74,6 +74,12 @@ export const navigationConfig: NavItem[] = [
       {
         label: "Manage Attendance",
         href: "/manageAttendance",
+        icon: BarChartIcon,
+        roles: ["management", "admin"],
+      },
+      {
+        label: "Manage Queries",
+        href: "/manageQuery",
         icon: BarChartIcon,
         roles: ["management", "admin"],
       },

@@ -28,7 +28,6 @@ import {
   TrendingUp,
 } from "lucide-react";
 
-// Import our reusable components
 import { KPICard, KPIGrid } from "./kpi-card";
 import { HeatTable } from "./heat-table";
 import { DrillChart } from "./drill-chart";
@@ -119,10 +118,10 @@ export const BranchDashboard: React.FC = () => {
                   FullName: staff.FullName,
                   PositionName: staff.PositionName || "Pharmacy Professional",
                   Role: staff.Role || "staff",
-                  TotalTasks: 15 + index * 5, // Consistent task distribution
-                  CompletedTasks: 12 + index * 4, // Consistent completion
-                  OverdueTasks: index % 3, // 0, 1, 2 rotation
-                  CompletionRate: 78 + index * 3, // 78%, 81%, 84%, 87%, 90%
+                  TotalTasks: staff.TotalTasks, // Consistent task distribution
+                  CompletedTasks: staff.CompletedTasks, // Consistent completion
+                  OverdueTasks: staff.OverdueTasks, // 0, 1, 2 rotation
+                  CompletionRate: staff.CompletionRate, // 78%, 81%, 84%, 87%, 90%
                   AvgProgress: 80 + index * 3, // Consistent progress
                 }))
             : [

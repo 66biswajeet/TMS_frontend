@@ -19,6 +19,16 @@ import {
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/attendance`;
 
+interface AttendanceRecord {
+  AttendanceId: string;
+  WorkDate: string;
+  CheckInAt: string | null;
+  CheckOutAt: string | null;
+
+  BreakInAt: string | null;
+  BreakOutAt: string | null;
+}
+
 interface Query {
   QueryId: string;
   UserId: string;
@@ -168,6 +178,42 @@ const QueryDetailModal: React.FC<{
   );
   const [statusMessage, setStatusMessage] = useState("");
 
+  const [attendanceDetails, setAttendanceDetails] =
+    useState<AttendanceRecord | null>(null);
+  const [attendanceLoading, setAttendanceLoading] = useState(true);
+
+  const fetchAttendanceDetails = useCallback(async (attendanceId: string) => {
+    setAttendanceLoading(true);
+    // Use the new endpoint: /record/:attendanceId
+    const url = `${API_BASE_URL}/record/${attendanceId}`;
+    console.log("🤣Fetching attendance details from:", url);
+    try {
+      const res = await fetchData(url);
+      if (res.ok && res.data.record) {
+        // Check for res.data.record from the controller response
+        setAttendanceDetails(res.data.record);
+      } else {
+        console.error("Failed to fetch attendance details:", res.data.message);
+        setAttendanceDetails(null);
+      }
+    } catch (error) {
+      console.error("Network error fetching attendance:", error);
+      setAttendanceDetails(null);
+    } finally {
+      setAttendanceLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (query.AttendanceId) {
+      fetchAttendanceDetails(query.AttendanceId);
+    } else {
+      setAttendanceDetails(null);
+      setAttendanceLoading(false);
+    }
+  }, [query.AttendanceId, fetchAttendanceDetails]);
+  // === END NEW ATTENDANCE LOGIC ===
+
   const handleResolve = async () => {
     if (selectedStatus === "Pending") {
       setStatusMessage(
@@ -256,6 +302,83 @@ const QueryDetailModal: React.FC<{
               )}
             </div>
           </div>
+
+          {query.AttendanceId && (
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 p-5 rounded-xl border-2 border-blue-200">
+              <h4 className="text-lg font-bold text-blue-800 mb-4 flex items-center gap-2">
+                <Calendar className="w-5 h-5" />
+                Linked Attendance Record
+              </h4>
+              {attendanceLoading ? (
+                <div className="text-blue-700 flex items-center gap-2 p-2">
+                  <RefreshCw className="w-4 h-4 animate-spin" />
+                  Fetching attendance record...
+                </div>
+              ) : attendanceDetails ? (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="col-span-2 md:col-span-4">
+                    <p className="text-sm text-blue-700 mb-1">Work Date</p>
+                    <p className="text-xl font-bold text-gray-800">
+                      {new Date(attendanceDetails.WorkDate).toLocaleDateString(
+                        "en-IN",
+                        {
+                          year: "numeric",
+                          month: "long",
+                          day: "numeric",
+                        }
+                      )}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-700 mb-1">Check-In</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {attendanceDetails.CheckInAt
+                        ? formatDateTime(attendanceDetails.CheckInAt).split(
+                            ", "
+                          )[1] // Gets time part
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-700 mb-1">Check-Out</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {attendanceDetails.CheckOutAt
+                        ? formatDateTime(attendanceDetails.CheckOutAt).split(
+                            ", "
+                          )[1]
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-700 mb-1">Break-In</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {attendanceDetails.BreakInAt
+                        ? formatDateTime(attendanceDetails.BreakInAt).split(
+                            ", "
+                          )[1]
+                        : "—"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-sm text-blue-700 mb-1">Break-Out</p>
+                    <p className="text-lg font-semibold text-gray-800">
+                      {attendanceDetails.BreakOutAt
+                        ? formatDateTime(attendanceDetails.BreakOutAt).split(
+                            ", "
+                          )[1]
+                        : "—"}
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-red-700 p-2">
+                  ⚠️ Could not load attendance details for Attendance ID:{" "}
+                  {query.AttendanceId}.
+                </p>
+              )}
+            </div>
+          )}
+          {/* ========================================================== */}
 
           {/* Subject & Message */}
           <div className="space-y-4">
