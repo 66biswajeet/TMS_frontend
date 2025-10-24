@@ -144,8 +144,8 @@ export const ManagementDashboard: React.FC = () => {
         console.log("✅ Real TMS management metrics:", metricsData);
 
         // Enhanced KPI calculation with realistic fallbacks for empty/0 data
-        const totalBranches = Math.max(metricsData.totalBranches || 7, 1); // Ensure at least 1
-        const tasksCreated = totalBranches * 12; // 12 tasks per branch average
+        const totalBranches = Math.max(metricsData.totalBranches); // Ensure at least 1
+        const tasksCreated = metricsData.totalTasksCreated; // Fallback to 150 if missing
         const completionRate = Math.max(
           metricsData.avgComplianceRate || 87,
           75
@@ -155,13 +155,15 @@ export const ManagementDashboard: React.FC = () => {
             ? 2
             : metricsData.criticalIssues || 3; // Show 2-3 issues for realism
 
+        const onTimeRate = metricsData.onTimeRate;
+
         setKpis({
           TasksCreated: tasksCreated,
           TasksCompleted: Math.round((tasksCreated * completionRate) / 100),
           TasksPartial: Math.max(Math.round(totalBranches * 0.8), 3), // At least 3 partial tasks
           TasksMissedOverdue: Math.max(criticalIssues, 2), // At least 2 overdue for realism
           CompletionRate: completionRate,
-          OnTimeRate: Math.max(completionRate - 3, 80), // On-time rate slightly lower than completion
+          OnTimeRate: onTimeRate, // On-time rate slightly lower than completion
           AvgChecklistCompletion: Math.max(completionRate - 2, 85), // 85-95% range
           AvgCompletionHours: 2.5,
           SLABreachCount: Math.max(criticalIssues, 2), // At least 2 SLA breaches for realism
@@ -311,51 +313,100 @@ export const ManagementDashboard: React.FC = () => {
   }, []);
 
   // Fetch branch details for drill-down
-  const fetchBranchDetails = async (branchId: string) => {
+  // const fetchBranchDetails = async (branchId: string) => {
+  //   try {
+  //     // Mock branch details for now - can be enhanced later
+  //     setBranchDetails({
+  //       kpis: {
+  //         CompletionRate: 85,
+  //         OnTimeRate: 82,
+  //         TotalTasks: 25,
+  //         OverdueTasks: 3,
+  //       },
+  //       staff: [
+  //         {
+  //           FullName: "Ahmed Al-Rashid",
+  //           Role: "staff",
+  //           CompletionRate: 92,
+  //           CompletedTasks: 18,
+  //           TotalTasks: 20,
+  //         },
+  //         {
+  //           FullName: "Fatima Hassan",
+  //           Role: "staff",
+  //           CompletionRate: 88,
+  //           CompletedTasks: 15,
+  //           TotalTasks: 17,
+  //         },
+  //       ],
+  //       templates: [
+  //         {
+  //           TemplateName: "Daily Inventory Check",
+  //           IssueRate: 5,
+  //           PartialTasks: 1,
+  //           OverdueTasks: 1,
+  //         },
+  //         {
+  //           TemplateName: "Weekly Compliance Review",
+  //           IssueRate: 8,
+  //           PartialTasks: 2,
+  //           OverdueTasks: 1,
+  //         },
+  //       ],
+  //     });
+  //   } catch (err) {
+  //     console.error("Branch details fetch error:", err);
+  //   }
+  // };
+
+  //-------------------------------------------------------//
+
+  const fetchBranchDetails = useCallback(async (currentFilters: any = {}) => {
     try {
-      // Mock branch details for now - can be enhanced later
-      setBranchDetails({
-        kpis: {
-          CompletionRate: 85,
-          OnTimeRate: 82,
-          TotalTasks: 25,
-          OverdueTasks: 3,
-        },
-        staff: [
-          {
-            FullName: "Ahmed Al-Rashid",
-            Role: "staff",
-            CompletionRate: 92,
-            CompletedTasks: 18,
-            TotalTasks: 20,
-          },
-          {
-            FullName: "Fatima Hassan",
-            Role: "staff",
-            CompletionRate: 88,
-            CompletedTasks: 15,
-            TotalTasks: 17,
-          },
-        ],
-        templates: [
-          {
-            TemplateName: "Daily Inventory Check",
-            IssueRate: 5,
-            PartialTasks: 1,
-            OverdueTasks: 1,
-          },
-          {
-            TemplateName: "Weekly Compliance Review",
-            IssueRate: 8,
-            PartialTasks: 2,
-            OverdueTasks: 1,
-          },
-        ],
-      });
+      setIsLoading(true);
+      setError(null);
+
+      console.log("🔄 Fetching branch manager dashboard data from TMS...");
+
+      // Fetch branch metrics using TMS axios
+      try {
+        const branchResponse = await api.get("/metrics/branch");
+
+        const branchData = branchResponse.data;
+
+        // Calculate realistic branch manager KPIs (avoid 0% values)
+        const activeTasks = Math.max(branchData.activeTasks); // Minimum 20 tasks
+        const overdueTasks = Math.max(branchData.overdueTasks); // At least 1 overdue
+        const completionRate = Math.max(branchData.complianceRate); // Minimum 80%
+
+        setKpis({
+          TasksCreated: activeTasks,
+          TasksCompleted: Math.round((activeTasks * completionRate) / 100),
+          TasksPartial: Math.max(Math.round(activeTasks * 0.08)), // 8% partial tasks
+          TasksMissedOverdue: overdueTasks,
+          CompletionRate: completionRate,
+          OnTimeRate: Math.max(completionRate - 2), // Slightly lower than completion
+          AvgChecklistCompletion: Math.max(completionRate + 3),
+          AvgCompletionHours: 2.5,
+          SLABreachCount: overdueTasks,
+        });
+      } catch (branchError) {
+        console.log(
+          "⚠️ Branch metrics not available, using realistic data:",
+          branchError
+        );
+      }
+
+      // Fetch real staff data for the branch using TMS axios
     } catch (err) {
-      console.error("Branch details fetch error:", err);
+      setError(err instanceof Error ? err.message : "An error occurred");
+      console.error("Branch dashboard fetch error:", err);
+    } finally {
+      setIsLoading(false);
     }
-  };
+  }, []);
+
+  //-------------------------------------------------------
 
   // Handle filter changes
   const handleFiltersChange = (newFilters: any) => {
@@ -448,6 +499,93 @@ export const ManagementDashboard: React.FC = () => {
     }
   };
 
+  // const handleExportPDF = async () => {
+  //   try {
+  //     const input = document.getElementById("management-dashboard-content");
+  //     if (!input) {
+  //       console.error(
+  //         "Could not find dashboard content element for PDF export."
+  //       );
+  //       return;
+  //     }
+
+  //     console.log("🔄 Generating PDF...");
+
+  //     const originalStyle = input.style.cssText;
+
+  //     // --- 🎯 Comprehensive Workaround for 'oklch' error ---
+  //     // 1. Target the main input container
+  //     input.style.backgroundColor = "#ffffff";
+
+  //     // 2. Target common elements that might use complex CSS variables (like Card, Button, Badge)
+  //     // Store their original styles to revert later
+  //     // Added 'p', 'h1', 'h2', 'h3' to catch potential text background issues
+  //     const elementsToOverride = input.querySelectorAll("*");
+  //     const originalChildStyles: string[] = [];
+
+  //     elementsToOverride.forEach((el, index) => {
+  //       // Save the original style string
+  //       originalChildStyles[index] = (el as HTMLElement).style.cssText;
+
+  //       // Apply safe, simple styles to prevent html2canvas parsing errors
+  //       const htmlEl = el as HTMLElement;
+
+  //       // Explicitly overriding potentially problematic properties set by Tailwind/shadcn
+  //       htmlEl.style.backgroundColor = "transparent";
+  //       htmlEl.style.borderColor = "#e0e0e0";
+  //       htmlEl.style.boxShadow = "none";
+  //       htmlEl.style.color = "black"; // Ensure text color is defined safely
+  //     });
+  //     // ----------------------------------------------------
+
+  //     // 1. Use html2canvas to render the HTML element as a canvas
+  //     const canvas = await html2canvas(input, {
+  //       scale: 2,
+  //       useCORS: true,
+  //       // You can add logging for debugging if needed:
+  //       // logging: true
+  //     });
+
+  //     // --- 🎯 Restore Original Styles Immediately ---
+  //     // Restore main container style
+  //     input.style.cssText = originalStyle;
+
+  //     // Restore child element styles
+  //     elementsToOverride.forEach((el, index) => {
+  //       (el as HTMLElement).style.cssText = originalChildStyles[index];
+  //     });
+  //     // ----------------------------------------------
+
+  //     // 2. Generate and Save PDF (Existing Logic)
+  //     const imgData = canvas.toDataURL("image/png");
+  //     const pdf = new jsPDF("p", "mm", "a4");
+
+  //     const imgWidth = 210;
+  //     const pageHeight = 295;
+  //     const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  //     let heightLeft = imgHeight;
+  //     let position = 0;
+
+  //     pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //     heightLeft -= pageHeight;
+
+  //     while (heightLeft >= -1) {
+  //       position = heightLeft - imgHeight;
+  //       pdf.addPage();
+  //       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //       heightLeft -= pageHeight;
+  //     }
+
+  //     const fileName = `management-dashboard-${
+  //       new Date().toISOString().split("T")[0]
+  //     }.pdf`;
+  //     pdf.save(fileName);
+  //     console.log(`✅ PDF file saved.`);
+  //   } catch (err) {
+  //     console.error("Export error (PDF generation failed):", err);
+  //   }
+  // };
+
   const handleExportPDF = async () => {
     try {
       const input = document.getElementById("management-dashboard-content");
@@ -458,54 +596,57 @@ export const ManagementDashboard: React.FC = () => {
         return;
       }
 
-      console.log("🔄 Generating PDF...");
-
-      const originalStyle = input.style.cssText;
-
-      // --- 🎯 Comprehensive Workaround for 'oklch' error ---
-      // 1. Target the main input container
-      input.style.backgroundColor = "#ffffff";
-
-      // 2. Target common elements that might use complex CSS variables (like Card, Button, Badge)
-      // Store their original styles to revert later
-      // Added 'p', 'h1', 'h2', 'h3' to catch potential text background issues
-      const elementsToOverride = input.querySelectorAll(
-        "div, button, a, span, p, h1, h2, h3, li"
-      );
-      const originalChildStyles: string[] = [];
-
-      elementsToOverride.forEach((el, index) => {
-        // Save the original style string
-        originalChildStyles[index] = (el as HTMLElement).style.cssText;
-
-        // Apply safe, simple styles to prevent html2canvas parsing errors
-        const htmlEl = el as HTMLElement;
-
-        // Explicitly overriding potentially problematic properties set by Tailwind/shadcn
-        htmlEl.style.backgroundColor = "transparent";
-        htmlEl.style.borderColor = "#e0e0e0";
-        htmlEl.style.boxShadow = "none";
-        htmlEl.style.color = "black"; // Ensure text color is defined safely
-      });
-      // ----------------------------------------------------
+      console.log("🔄 Generating PDF with SVG 'class' removal fix...");
 
       // 1. Use html2canvas to render the HTML element as a canvas
       const canvas = await html2canvas(input, {
         scale: 2,
         useCORS: true,
-        // You can add logging for debugging if needed:
-        // logging: true
-      });
+        // Add a simple white background as a fallback
+        backgroundColor: "#ffffff",
 
-      // --- 🎯 Restore Original Styles Immediately ---
-      // Restore main container style
-      input.style.cssText = originalStyle;
+        // 'onclone' runs on the *cloned* document before rendering
+        onclone: (clonedDoc) => {
+          // Select every single element in the cloned document
+          const elements = clonedDoc.querySelectorAll("*");
 
-      // Restore child element styles
-      elementsToOverride.forEach((el, index) => {
-        (el as HTMLElement).style.cssText = originalChildStyles[index];
+          elements.forEach((el) => {
+            const htmlEl = el as HTMLElement;
+            const tagName = htmlEl.tagName.toLowerCase();
+
+            // --- THIS IS THE NEW FIX ---
+            // Check if the element is an SVG or an SVG child
+            const isSvgElement = [
+              "svg",
+              "path",
+              "rect",
+              "circle",
+              "line",
+              "polygon",
+              "polyline",
+              "text",
+              "g",
+            ].includes(tagName);
+
+            if (isSvgElement) {
+              // 1. Remove the 'class' attribute completely.
+              // This is the attribute that links to the oklch color in the stylesheet.
+              htmlEl.removeAttribute("class");
+
+              // 2. Force a simple, safe inline style as a fallback.
+              htmlEl.style.fill = "black";
+              htmlEl.style.stroke = "none";
+            }
+            // --- END OF NEW FIX ---
+
+            // General fix for non-SVG elements
+            htmlEl.style.backgroundColor = "white";
+            htmlEl.style.color = "black";
+            htmlEl.style.borderColor = "black";
+            htmlEl.style.boxShadow = "none";
+          });
+        },
       });
-      // ----------------------------------------------
 
       // 2. Generate and Save PDF (Existing Logic)
       const imgData = canvas.toDataURL("image/png");

@@ -1,6 +1,6 @@
 "use client";
 
-import type React from "react";  
+import type React from "react";
 
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
@@ -80,6 +80,7 @@ const ROLE_POSITIONS = {
     "Assistant Pharmacist",
     "Pharmacy Technician",
     "Cashier",
+    "HR",
     "Inventory Clerk",
     "Customer Service Representative",
   ],

@@ -1,26 +1,57 @@
-"use client"
+"use client";
 
-import type React from "react"
+import type React from "react";
 
-import { useState, useEffect } from "react"
-import { useDispatch, useSelector } from "react-redux"
-import type { RootState } from "@/redux/store"
-import { fetchPositions, createPosition, updatePosition, deletePosition } from "@/redux/modules/positions/actions"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Search, Plus, Edit, Trash2, Briefcase, Users, CheckCircle } from "lucide-react"
-import { showError, showSuccess, showWarning } from "@/lib/toast"
+import { useState, useEffect } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { RootState } from "@/redux/store";
+import {
+  fetchPositions,
+  createPosition,
+  updatePosition,
+  deletePosition,
+} from "@/redux/modules/positions/actions";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Search,
+  Plus,
+  Edit,
+  Trash2,
+  Briefcase,
+  Users,
+  CheckCircle,
+} from "lucide-react";
+import { showError, showSuccess, showWarning } from "@/lib/toast";
 
 interface Position {
-  PositionId: string
-  Name: string
-  IsActive: boolean
-  CreatedAt?: string
+  PositionId: string;
+  Name: string;
+  IsActive: boolean;
+  CreatedAt?: string;
 }
 
 // Define role-specific positions mapping
@@ -30,159 +61,187 @@ const ROLE_POSITIONS = {
     { id: "assistant_pharmacist", name: "Assistant Pharmacist" },
     { id: "pharmacy_technician", name: "Pharmacy Technician" },
     { id: "cashier", name: "Cashier" },
+    { id: "hr", name: "HR" },
     { id: "inventory_clerk", name: "Inventory Clerk" },
-    { id: "customer_service", name: "Customer Service Representative" }
+    { id: "customer_service", name: "Customer Service Representative" },
   ],
   branch_manager: [
     { id: "branch_manager", name: "Branch Manager" },
-    { id: "pharmacy_manager", name: "Pharmacy Manager" }
+    { id: "pharmacy_manager", name: "Pharmacy Manager" },
   ],
   area_manager: [
     { id: "area_manager", name: "Area Manager" },
-    { id: "regional_supervisor", name: "Regional Supervisor" }
+    { id: "regional_supervisor", name: "Regional Supervisor" },
   ],
   auditor: [
     { id: "quality_control_supervisor", name: "Quality Control Supervisor" },
     { id: "compliance_auditor", name: "Compliance Auditor" },
-    { id: "regulatory_inspector", name: "Regulatory Inspector" }
+    { id: "regulatory_inspector", name: "Regulatory Inspector" },
   ],
   management: [
     { id: "ceo", name: "Chief Executive Officer (CEO)" },
     { id: "owner", name: "Owner" },
     { id: "operations_director", name: "Operations Director" },
-    { id: "pharmacy_director", name: "Pharmacy Director" }
+    { id: "pharmacy_director", name: "Pharmacy Director" },
   ],
   admin: [
     { id: "system_administrator", name: "System Administrator" },
-    { id: "it_manager", name: "IT Manager" }
-  ]
-}
+    { id: "it_manager", name: "IT Manager" },
+  ],
+};
 
 export function PositionsManagement() {
-  const dispatch = useDispatch()
-  const { items: positions, loading, error } = useSelector((state: RootState) => state.positions)
-  
+  const dispatch = useDispatch();
+  const {
+    items: positions,
+    loading,
+    error,
+  } = useSelector((state: RootState) => state.positions);
+
   useEffect(() => {
-    dispatch(fetchPositions() as any)
-  }, [dispatch])
-  
-  const [searchTerm, setSearchTerm] = useState("")
-  const [statusFilter, setStatusFilter] = useState<string>("all")
-  const [roleFilter, setRoleFilter] = useState<string>("all")
-  const [isDialogOpen, setIsDialogOpen] = useState(false)
-  const [isRolePositionsDialogOpen, setIsRolePositionsDialogOpen] = useState(false)
-  const [editingPosition, setEditingPosition] = useState<Position | null>(null)
-  const [selectedRole, setSelectedRole] = useState<string>("")
+    dispatch(fetchPositions() as any);
+  }, [dispatch]);
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [isRolePositionsDialogOpen, setIsRolePositionsDialogOpen] =
+    useState(false);
+  const [editingPosition, setEditingPosition] = useState<Position | null>(null);
+  const [selectedRole, setSelectedRole] = useState<string>("");
   const [formData, setFormData] = useState({
     Name: "",
     IsActive: true,
-  })
+  });
 
   const filteredPositions = positions.filter((position: any) => {
-    const matchesSearch = position.Name.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "all" ||
+    const matchesSearch = position.Name.toLowerCase().includes(
+      searchTerm.toLowerCase()
+    );
+    const matchesStatus =
+      statusFilter === "all" ||
       (statusFilter === "active" && position.IsActive) ||
-      (statusFilter === "inactive" && !position.IsActive)
+      (statusFilter === "inactive" && !position.IsActive);
 
-    return matchesSearch && matchesStatus
-  })
+    return matchesSearch && matchesStatus;
+  });
 
   // Get positions for a specific role
   const getPositionsForRole = (role: string) => {
-    return ROLE_POSITIONS[role as keyof typeof ROLE_POSITIONS] || []
-  }
+    return ROLE_POSITIONS[role as keyof typeof ROLE_POSITIONS] || [];
+  };
 
   // Handle bulk create positions for a role
   const handleCreateRolePositions = async (role: string) => {
-    const rolePositions = getPositionsForRole(role)
-    
+    const rolePositions = getPositionsForRole(role);
+
     try {
       for (const pos of rolePositions) {
         // Check if position already exists
-        const existingPosition = positions.find((p: any) => 
-          p.Name.toLowerCase() === pos.name.toLowerCase()
-        )
-        
+        const existingPosition = positions.find(
+          (p: any) => p.Name.toLowerCase() === pos.name.toLowerCase()
+        );
+
         if (!existingPosition) {
-          await dispatch(createPosition({ Name: pos.name, IsActive: true }) as any)
+          await dispatch(
+            createPosition({ Name: pos.name, IsActive: true }) as any
+          );
         }
       }
-      
-      showSuccess(`Positions for ${role.replace('_', ' ')} role have been created successfully!`)
-      setIsRolePositionsDialogOpen(false)
+
+      showSuccess(
+        `Positions for ${role.replace(
+          "_",
+          " "
+        )} role have been created successfully!`
+      );
+      setIsRolePositionsDialogOpen(false);
     } catch (error) {
-      console.error('Failed to create role positions:', error)
-      showError('Failed to create some positions. Please try again.')
+      console.error("Failed to create role positions:", error);
+      showError("Failed to create some positions. Please try again.");
     }
-  }
+  };
 
   const handleCreatePosition = () => {
-    setEditingPosition(null)
+    setEditingPosition(null);
     setFormData({
       Name: "",
       IsActive: true,
-    })
-    setIsDialogOpen(true)
-  }
+    });
+    setIsDialogOpen(true);
+  };
 
   const handleEditPosition = (position: any) => {
-    setEditingPosition(position)
+    setEditingPosition(position);
     setFormData({
       Name: position.Name,
       IsActive: position.IsActive,
-    })
-    setIsDialogOpen(true)
-  }
+    });
+    setIsDialogOpen(true);
+  };
 
   const handleDeletePosition = (positionId: string) => {
     if (confirm("Are you sure you want to delete this position?")) {
-      dispatch(deletePosition(positionId) as any)
+      dispatch(deletePosition(positionId) as any);
     }
-  }
+  };
 
   const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
+    e.preventDefault();
 
     if (editingPosition) {
       // Update existing position
-      dispatch(updatePosition(editingPosition.PositionId, formData) as any).then(() => {
-        setIsDialogOpen(false)
-      })
+      dispatch(
+        updatePosition(editingPosition.PositionId, formData) as any
+      ).then(() => {
+        setIsDialogOpen(false);
+      });
     } else {
       // Create new position
       dispatch(createPosition(formData) as any).then(() => {
-        setIsDialogOpen(false)
-      })
+        setIsDialogOpen(false);
+      });
     }
-  }
+  };
 
   const getStatusColor = (isActive: boolean) => {
-    return isActive ? "default" : "secondary"
-  }
+    return isActive ? "default" : "secondary";
+  };
 
   const formatDate = (dateString?: string) => {
-    if (!dateString) return "N/A"
-    return new Date(dateString).toLocaleDateString()
-  }
+    if (!dateString) return "N/A";
+    return new Date(dateString).toLocaleDateString();
+  };
 
   if (loading) {
-    return <div className="flex justify-center items-center h-64">Loading...</div>
+    return (
+      <div className="flex justify-center items-center h-64">Loading...</div>
+    );
   }
 
   if (error) {
-    return <div className="flex justify-center items-center h-64 text-red-600">Error: {error}</div>
+    return (
+      <div className="flex justify-center items-center h-64 text-red-600">
+        Error: {error}
+      </div>
+    );
   }
 
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-foreground">Positions Management</h1>
-          <p className="text-muted-foreground">Manage job positions and role-specific assignments</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            Positions Management
+          </h1>
+          <p className="text-muted-foreground">
+            Manage job positions and role-specific assignments
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setIsRolePositionsDialogOpen(true)}
           >
             <Briefcase className="h-4 w-4 mr-2" />
@@ -199,18 +258,24 @@ export function PositionsManagement() {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total Positions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Total Positions
+            </CardTitle>
             <Briefcase className="h-4 w-4 text-primary" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-primary">{positions.length}</div>
+            <div className="text-2xl font-bold text-primary">
+              {positions.length}
+            </div>
             <p className="text-xs text-muted-foreground">Job positions</p>
           </CardContent>
         </Card>
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Active Positions</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Active Positions
+            </CardTitle>
             <CheckCircle className="h-4 w-4 text-green-500" />
           </CardHeader>
           <CardContent>
@@ -223,19 +288,26 @@ export function PositionsManagement() {
 
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Management Roles</CardTitle>
+            <CardTitle className="text-sm font-medium">
+              Management Roles
+            </CardTitle>
             <Users className="h-4 w-4 text-blue-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-blue-600">
-              {positions.filter((p: any) => 
-                p.Name.toLowerCase().includes('manager') || 
-                p.Name.toLowerCase().includes('ceo') ||
-                p.Name.toLowerCase().includes('director') ||
-                p.Name.toLowerCase().includes('owner')
-              ).length}
+              {
+                positions.filter(
+                  (p: any) =>
+                    p.Name.toLowerCase().includes("manager") ||
+                    p.Name.toLowerCase().includes("ceo") ||
+                    p.Name.toLowerCase().includes("director") ||
+                    p.Name.toLowerCase().includes("owner")
+                ).length
+              }
             </div>
-            <p className="text-xs text-muted-foreground">Leadership positions</p>
+            <p className="text-xs text-muted-foreground">
+              Leadership positions
+            </p>
           </CardContent>
         </Card>
 
@@ -246,12 +318,15 @@ export function PositionsManagement() {
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-gray-600">
-              {positions.filter((p: any) => 
-                p.Name.toLowerCase().includes('pharmacist') || 
-                p.Name.toLowerCase().includes('technician') ||
-                p.Name.toLowerCase().includes('cashier') ||
-                p.Name.toLowerCase().includes('clerk')
-              ).length}
+              {
+                positions.filter(
+                  (p: any) =>
+                    p.Name.toLowerCase().includes("pharmacist") ||
+                    p.Name.toLowerCase().includes("technician") ||
+                    p.Name.toLowerCase().includes("cashier") ||
+                    p.Name.toLowerCase().includes("clerk")
+                ).length
+              }
             </div>
             <p className="text-xs text-muted-foreground">Operational roles</p>
           </CardContent>
@@ -296,7 +371,9 @@ export function PositionsManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Positions</CardTitle>
-          <CardDescription>Manage job positions and role assignments</CardDescription>
+          <CardDescription>
+            Manage job positions and role assignments
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -311,7 +388,10 @@ export function PositionsManagement() {
               </thead>
               <tbody>
                 {filteredPositions.map((position: any) => (
-                  <tr key={position.PositionId} className="border-b hover:bg-muted/50">
+                  <tr
+                    key={position.PositionId}
+                    className="border-b hover:bg-muted/50"
+                  >
                     <td className="p-4">
                       <div className="flex items-center gap-2">
                         <Briefcase className="h-4 w-4 text-muted-foreground" />
@@ -319,7 +399,10 @@ export function PositionsManagement() {
                       </div>
                     </td>
                     <td className="p-4">
-                      <Badge variant={getStatusColor(position.IsActive)} className="text-xs">
+                      <Badge
+                        variant={getStatusColor(position.IsActive)}
+                        className="text-xs"
+                      >
                         {position.IsActive ? "Active" : "Inactive"}
                       </Badge>
                     </td>
@@ -328,14 +411,20 @@ export function PositionsManagement() {
                     </td>
                     <td className="p-4">
                       <div className="flex gap-2">
-                        <Button variant="outline" size="sm" onClick={() => handleEditPosition(position)}>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleEditPosition(position)}
+                        >
                           <Edit className="h-3 w-3 mr-1" />
                           Edit
                         </Button>
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => handleDeletePosition(position.PositionId)}
+                          onClick={() =>
+                            handleDeletePosition(position.PositionId)
+                          }
                           className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         >
                           <Trash2 className="h-3 w-3 mr-1" />
@@ -355,10 +444,12 @@ export function PositionsManagement() {
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>{editingPosition ? "Edit Position" : "Create New Position"}</DialogTitle>
+            <DialogTitle>
+              {editingPosition ? "Edit Position" : "Create New Position"}
+            </DialogTitle>
             <DialogDescription>
-              {editingPosition 
-                ? "Update position information." 
+              {editingPosition
+                ? "Update position information."
                 : "Add a new job position to the system."}
             </DialogDescription>
           </DialogHeader>
@@ -368,7 +459,9 @@ export function PositionsManagement() {
               <Input
                 id="Name"
                 value={formData.Name}
-                onChange={(e) => setFormData({ ...formData, Name: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, Name: e.target.value })
+                }
                 placeholder="e.g. Pharmacist, Branch Manager, etc."
                 required
               />
@@ -376,9 +469,11 @@ export function PositionsManagement() {
 
             <div className="space-y-2">
               <Label htmlFor="IsActive">Status</Label>
-              <Select 
-                value={formData.IsActive ? "active" : "inactive"} 
-                onValueChange={(value) => setFormData({ ...formData, IsActive: value === "active" })}
+              <Select
+                value={formData.IsActive ? "active" : "inactive"}
+                onValueChange={(value) =>
+                  setFormData({ ...formData, IsActive: value === "active" })
+                }
               >
                 <SelectTrigger>
                   <SelectValue />
@@ -408,7 +503,10 @@ export function PositionsManagement() {
       </Dialog>
 
       {/* Role Positions Dialog */}
-      <Dialog open={isRolePositionsDialogOpen} onOpenChange={setIsRolePositionsDialogOpen}>
+      <Dialog
+        open={isRolePositionsDialogOpen}
+        onOpenChange={setIsRolePositionsDialogOpen}
+      >
         <DialogContent className="sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Create Role-Specific Positions</DialogTitle>
@@ -419,10 +517,13 @@ export function PositionsManagement() {
           <div className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {Object.entries(ROLE_POSITIONS).map(([role, rolePositions]) => (
-                <Card key={role} className="cursor-pointer hover:shadow-md transition-shadow">
+                <Card
+                  key={role}
+                  className="cursor-pointer hover:shadow-md transition-shadow"
+                >
                   <CardHeader className="pb-3">
                     <CardTitle className="text-lg capitalize">
-                      {role.replace('_', ' ')} Positions
+                      {role.replace("_", " ")} Positions
                     </CardTitle>
                     <CardDescription>
                       {rolePositions.length} standard positions
@@ -431,7 +532,10 @@ export function PositionsManagement() {
                   <CardContent className="space-y-3">
                     <div className="space-y-1">
                       {rolePositions.slice(0, 3).map((pos) => (
-                        <div key={pos.id} className="text-sm text-muted-foreground flex items-center gap-1">
+                        <div
+                          key={pos.id}
+                          className="text-sm text-muted-foreground flex items-center gap-1"
+                        >
                           <Briefcase className="h-3 w-3" />
                           {pos.name}
                         </div>
@@ -442,12 +546,12 @@ export function PositionsManagement() {
                         </div>
                       )}
                     </div>
-                    <Button 
-                      size="sm" 
+                    <Button
+                      size="sm"
                       className="w-full"
                       onClick={() => handleCreateRolePositions(role)}
                     >
-                      Create {role.replace('_', ' ')} Positions
+                      Create {role.replace("_", " ")} Positions
                     </Button>
                   </CardContent>
                 </Card>
@@ -457,5 +561,5 @@ export function PositionsManagement() {
         </DialogContent>
       </Dialog>
     </div>
-  )
+  );
 }
