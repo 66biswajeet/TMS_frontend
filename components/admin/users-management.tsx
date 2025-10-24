@@ -1,8 +1,7 @@
 "use client";
 
 import type React from "react";
-
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/redux/store";
 import {
@@ -48,6 +47,26 @@ import {
   UserCheck,
   Building,
 } from "lucide-react";
+// Import the virtualization hook
+import { useVirtualizer } from "@tanstack/react-virtual";
+
+// --- Debounce Hook (put this in hooks/useDebounce.ts or keep it here) ---
+function useDebounce<T>(value: T, delay: number): T {
+  const [debouncedValue, setDebouncedValue] = useState<T>(value);
+
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedValue(value);
+    }, delay);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [value, delay]);
+
+  return debouncedValue;
+}
+// --- End Debounce Hook ---
 
 interface User {
   id: string;
@@ -102,16 +121,16 @@ const ROLE_POSITIONS = {
 
 export function UsersManagement() {
   const dispatch = useDispatch();
-  const {
-    items: users,
-    loading,
-    error,
-  } = useSelector((state: RootState) => state.users);
-  const { items: branches } = useSelector((state: RootState) => state.branches);
-  const { items: positions } = useSelector(
-    (state: RootState) => state.positions
-  );
-  const { items: roles } = useSelector((state: RootState) => state.roles);
+
+  // --- OPTIMIZED SELECTORS ---
+  // This prevents re-renders when only 'loading' or 'error' changes
+  const users = useSelector((state: RootState) => state.users.items);
+  const loading = useSelector((state: RootState) => state.users.loading);
+  const error = useSelector((state: RootState) => state.users.error);
+  const branches = useSelector((state: RootState) => state.branches.items);
+  const positions = useSelector((state: RootState) => state.positions.items);
+  const roles = useSelector((state: RootState) => state.roles.items);
+  // ---
 
   useEffect(() => {
     dispatch(fetchUsersMinimal() as any);
@@ -126,12 +145,15 @@ export function UsersManagement() {
   const [branchFilter, setBranchFilter] = useState<string>("all");
   const [positionFilter, setPositionFilter] = useState<string>("all");
 
+  // --- DEBOUNCED SEARCH ---
+  // This waits 300ms after the user stops typing before filtering
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
   // Re-fetch users when branch filter changes
   useEffect(() => {
     if (branchFilter === "all") {
       dispatch(fetchUsersMinimal() as any);
     } else {
-      // Find the branch ID from branch name
       const selectedBranch = branches.find(
         (b: any) => b.BranchName === branchFilter
       );
@@ -140,6 +162,7 @@ export function UsersManagement() {
       }
     }
   }, [branchFilter, branches, dispatch]);
+
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -157,98 +180,106 @@ export function UsersManagement() {
     status: "active",
   });
 
-  // Get filtered positions based on selected role
-  const getFilteredPositions = (selectedRole: string) => {
-    if (!selectedRole) return positions;
+  // --- MEMOIZED & CALLBACK FUNCTIONS ---
 
-    const rolePositions =
-      ROLE_POSITIONS[selectedRole as keyof typeof ROLE_POSITIONS] || [];
+  const getFilteredPositions = useCallback(
+    (selectedRole: string) => {
+      if (!selectedRole) return positions;
 
-    // Filter actual positions that match the role-specific ones
-    return positions.filter((position: any) =>
-      rolePositions.some(
-        (rolePosName) =>
-          position.Name.toLowerCase().includes(rolePosName.toLowerCase()) ||
-          rolePosName.toLowerCase().includes(position.Name.toLowerCase())
-      )
-    );
-  };
+      const rolePositions =
+        ROLE_POSITIONS[selectedRole as keyof typeof ROLE_POSITIONS] || [];
 
-  // First check if there's an exact Staff ID match to prioritize it
-  const hasExactStaffIdMatch =
-    searchTerm.trim() &&
-    users.some(
-      (user: any) =>
-        (user.staffId || "").toLowerCase() === searchTerm.toLowerCase().trim()
-    );
+      return positions.filter((position: any) =>
+        rolePositions.some(
+          (rolePosName) =>
+            position.Name.toLowerCase().includes(rolePosName.toLowerCase()) ||
+            rolePosName.toLowerCase().includes(position.Name.toLowerCase())
+        )
+      );
+    },
+    [positions]
+  );
 
-  const filteredUsers = users.filter((user: any) => {
-    const searchLower = searchTerm.toLowerCase().trim();
-    const userStaffId = (user.staffId || "").toLowerCase();
+  // --- MEMOIZED FILTERED USERS ---
+  // This calculation only runs when its dependencies change
+  const filteredUsers = useMemo(() => {
+    // Use the debouncedSearchTerm here
+    const hasExactStaffIdMatch =
+      debouncedSearchTerm.trim() &&
+      users.some(
+        (user: any) =>
+          (user.staffId || "").toLowerCase() ===
+          debouncedSearchTerm.toLowerCase().trim()
+      );
 
-    // Apply filters
-    const matchesRole = roleFilter === "all" || user.role === roleFilter;
-    const matchesStatus =
-      statusFilter === "all" || user.status === statusFilter;
-    const matchesBranch =
-      branchFilter === "all" || user.branch === branchFilter;
-    // Fix position filtering - handle null positions correctly
-    const userPosition = user.position || "";
-    const matchesPosition =
-      positionFilter === "all" || userPosition === positionFilter;
+    return users.filter((user: any) => {
+      const searchLower = debouncedSearchTerm.toLowerCase().trim();
+      const userStaffId = (user.staffId || "").toLowerCase();
 
-    // If no search term, just apply filters
-    if (!searchTerm.trim()) {
-      return matchesRole && matchesStatus && matchesBranch && matchesPosition;
-    }
+      const matchesRole = roleFilter === "all" || user.role === roleFilter;
+      const matchesStatus =
+        statusFilter === "all" || user.status === statusFilter;
+      const matchesBranch =
+        branchFilter === "all" || user.branch === branchFilter;
+      const userPosition = user.position || "";
+      const matchesPosition =
+        positionFilter === "all" || userPosition === positionFilter;
 
-    // If there's an exact Staff ID match, ONLY show that user
-    if (hasExactStaffIdMatch) {
+      if (!debouncedSearchTerm.trim()) {
+        return matchesRole && matchesStatus && matchesBranch && matchesPosition;
+      }
+
+      if (hasExactStaffIdMatch) {
+        return (
+          userStaffId === searchLower &&
+          matchesRole &&
+          matchesStatus &&
+          matchesBranch &&
+          matchesPosition
+        );
+      }
+
+      const matchesSearch =
+        (user.name || "").toLowerCase().includes(searchLower) ||
+        (user.email || "").toLowerCase().includes(searchLower) ||
+        (user.phone || "").toLowerCase().includes(searchLower) ||
+        userStaffId.includes(searchLower) ||
+        (user.emiratesId || "").toLowerCase().includes(searchLower);
+
       return (
-        userStaffId === searchLower &&
+        matchesSearch &&
         matchesRole &&
         matchesStatus &&
         matchesBranch &&
         matchesPosition
       );
-    }
+    });
+  }, [
+    users,
+    debouncedSearchTerm,
+    roleFilter,
+    statusFilter,
+    branchFilter,
+    positionFilter,
+  ]);
 
-    // Otherwise use inclusive search across all fields
-    const matchesSearch =
-      (user.name || "").toLowerCase().includes(searchLower) ||
-      (user.email || "").toLowerCase().includes(searchLower) ||
-      (user.phone || "").toLowerCase().includes(searchLower) ||
-      userStaffId.includes(searchLower) ||
-      (user.emiratesId || "").toLowerCase().includes(searchLower);
+  const handleRoleChange = useCallback(
+    (newRole: string) => {
+      const updatedFormData = { ...formData, role: newRole };
+      const filteredPositions = getFilteredPositions(newRole);
+      const isCurrentPositionValid = filteredPositions.some(
+        (pos: any) => pos.Name === formData.position
+      );
 
-    return (
-      matchesSearch &&
-      matchesRole &&
-      matchesStatus &&
-      matchesBranch &&
-      matchesPosition
-    );
-  });
+      if (!isCurrentPositionValid) {
+        updatedFormData.position = "";
+      }
+      setFormData(updatedFormData);
+    },
+    [formData, getFilteredPositions]
+  );
 
-  // Handle role change and reset position if it's not valid for the new role
-  const handleRoleChange = (newRole: string) => {
-    const updatedFormData = { ...formData, role: newRole };
-
-    // Check if current position is valid for the new role
-    const filteredPositions = getFilteredPositions(newRole);
-    const isCurrentPositionValid = filteredPositions.some(
-      (pos: any) => pos.Name === formData.position
-    );
-
-    // Reset position if it's not valid for the new role
-    if (!isCurrentPositionValid) {
-      updatedFormData.position = "";
-    }
-
-    setFormData(updatedFormData);
-  };
-
-  const handleCreateUser = () => {
+  const handleCreateUser = useCallback(() => {
     setEditingUser(null);
     setFormData({
       firstName: "",
@@ -265,87 +296,73 @@ export function UsersManagement() {
       status: "active",
     });
     setIsDialogOpen(true);
-  };
+  }, []);
 
-  const handleEditUser = (user: any) => {
-    console.log("[Frontend] Editing user:", user);
-    console.log(
-      "[Frontend] User gender:",
-      user.gender,
-      "type:",
-      typeof user.gender
-    );
-
+  const handleEditUser = useCallback((user: any) => {
     const [firstName, ...lastNameParts] = (user.name || "").split(" ");
     const lastName = lastNameParts.join(" ");
 
     setEditingUser(user);
-
     const newFormData = {
       firstName: firstName || "",
       lastName: lastName || "",
       email: user.email,
-      password: "", // Don't populate password for security
+      password: "",
       phone: user.phone,
       emiratesId: user.emiratesId,
-      gender: user.gender?.toLowerCase() || "", // Normalize gender to lowercase
+      gender: user.gender?.toLowerCase() || "",
       staffId: user.staffId,
       role: user.role,
       position: user.position,
       rank: user.rank,
       status: user.status,
     };
-
-    console.log("[Frontend] Setting form data:", newFormData);
-    console.log("[Frontend] Normalized gender:", newFormData.gender);
-
     setFormData(newFormData);
     setIsDialogOpen(true);
-  };
+  }, []);
 
-  const handleDeleteUser = (userId: string) => {
-    if (confirm("Are you sure you want to delete this user?")) {
-      dispatch(deleteUser(userId) as any);
-    }
-  };
+  const handleDeleteUser = useCallback(
+    (userId: string) => {
+      if (confirm("Are you sure you want to delete this user?")) {
+        dispatch(deleteUser(userId) as any);
+      }
+    },
+    [dispatch]
+  );
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
 
-    // Map frontend form data to backend expected structure
-    const backendData: any = {
-      firstName: formData.firstName,
-      lastName: formData.lastName,
-      email: formData.email,
-      phone: formData.phone,
-      emiratesId: formData.emiratesId,
-      gender: formData.gender,
-      password: formData.password,
-      staffId: formData.staffId,
-      positionId: positions.find((p: any) => p.Name === formData.position)
-        ?.PositionId,
-      isActive: formData.status === "active",
-    };
+      const backendData: any = {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        email: formData.email,
+        phone: formData.phone,
+        emiratesId: formData.emiratesId,
+        gender: formData.gender,
+        password: formData.password,
+        staffId: formData.staffId,
+        positionId: positions.find((p: any) => p.Name === formData.position)
+          ?.PositionId,
+        isActive: formData.status === "active",
+      };
 
-    // Map role to roleRankId - get rank from role, not from form input
-    const selectedRole = roles.find((r: any) => r.Name === formData.role);
-    if (selectedRole) {
-      backendData.roleRankId = selectedRole.RoleRankId;
-    }
+      const selectedRole = roles.find((r: any) => r.Name === formData.role);
+      if (selectedRole) {
+        backendData.roleRankId = selectedRole.RoleRankId;
+      }
 
-    // Branch assignment will be handled separately, not during user creation
-    // Remove branchIds from user creation payload
+      if (editingUser) {
+        dispatch(updateUser(editingUser.id, backendData) as any);
+      } else {
+        dispatch(createUser(backendData) as any);
+      }
 
-    if (editingUser) {
-      // Update existing user
-      dispatch(updateUser(editingUser.id, backendData) as any);
-    } else {
-      // Create new user
-      dispatch(createUser(backendData) as any);
-    }
-
-    setIsDialogOpen(false);
-  };
+      setIsDialogOpen(false);
+    },
+    [dispatch, formData, editingUser, positions, roles]
+  );
 
   const getRoleColor = (role: string) => {
     switch (role) {
@@ -365,10 +382,10 @@ export function UsersManagement() {
   };
 
   const getRankColor = (rank: number) => {
-    if (rank <= 2) return "default"; // Highest ranks (1-2)
-    if (rank <= 4) return "secondary"; // High ranks (3-4)
-    if (rank <= 6) return "outline"; // Mid ranks (5-6)
-    return "outline"; // Lower ranks (7-10)
+    if (rank <= 2) return "default";
+    if (rank <= 4) return "secondary";
+    if (rank <= 6) return "outline";
+    return "outline";
   };
 
   const formatDate = (dateString: string) => {
@@ -392,7 +409,20 @@ export function UsersManagement() {
     }
   };
 
-  if (loading) {
+  // --- VIRTUALIZATION SETUP ---
+  // 1. Create a ref for the scrolling container
+  const parentRef = useRef<HTMLDivElement>(null);
+
+  // 2. Set up the virtualizer
+  const rowVirtualizer = useVirtualizer({
+    count: filteredUsers.length,
+    getScrollElement: () => parentRef.current,
+    estimateSize: () => 105, // Manually set this to the avg height of your row
+    overscan: 5, // Render 5 extra rows above/below the viewport
+  });
+  // --- END VIRTUALIZATION SETUP ---
+
+  if (loading && users.length === 0) {
     return (
       <div className="flex justify-center items-center h-64">Loading...</div>
     );
@@ -408,6 +438,9 @@ export function UsersManagement() {
 
   return (
     <div className="space-y-6">
+      {/* ... (Header, Stats Cards, Filters section are all unchanged) ... */}
+
+      {/* (Header: "Users Management") */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-foreground">
@@ -423,7 +456,7 @@ export function UsersManagement() {
         </Button>
       </div>
 
-      {/* Stats Cards */}
+      {/* (Stats Cards) */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -437,7 +470,6 @@ export function UsersManagement() {
             <p className="text-xs text-muted-foreground">Registered accounts</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Active Users</CardTitle>
@@ -450,7 +482,6 @@ export function UsersManagement() {
             <p className="text-xs text-muted-foreground">Currently active</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Managers</CardTitle>
@@ -468,7 +499,6 @@ export function UsersManagement() {
             <p className="text-xs text-muted-foreground">Management roles</p>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Staff</CardTitle>
@@ -483,7 +513,7 @@ export function UsersManagement() {
         </Card>
       </div>
 
-      {/* Filters */}
+      {/* (Filters Card) */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -502,7 +532,6 @@ export function UsersManagement() {
                 className="pl-10"
               />
             </div>
-
             <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Role" />
@@ -517,7 +546,6 @@ export function UsersManagement() {
                 <SelectItem value="admin">Admin</SelectItem>
               </SelectContent>
             </Select>
-
             <Select value={positionFilter} onValueChange={setPositionFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Position" />
@@ -531,7 +559,6 @@ export function UsersManagement() {
                 ))}
               </SelectContent>
             </Select>
-
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Status" />
@@ -542,7 +569,6 @@ export function UsersManagement() {
                 <SelectItem value="inactive">Inactive</SelectItem>
               </SelectContent>
             </Select>
-
             <Select value={branchFilter} onValueChange={setBranchFilter}>
               <SelectTrigger>
                 <SelectValue placeholder="Branch" />
@@ -560,18 +586,34 @@ export function UsersManagement() {
         </CardContent>
       </Card>
 
-      {/* Users Table */}
+      {/* --- VIRTUALIZED USERS TABLE --- */}
       <Card>
         <CardHeader>
-          <CardTitle>Users</CardTitle>
+          <CardTitle>Users ({filteredUsers.length} found)</CardTitle>
           <CardDescription>
             Manage user accounts, roles, and permissions
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
-          <div className="overflow-x-auto">
+          {/* 3. This is the scrolling container with the ref and a FIXED HEIGHT */}
+          <div
+            ref={parentRef}
+            className="overflow-x-auto"
+            style={{
+              height: "600px", // <-- THIS IS CRITICAL
+              overflowY: "auto",
+            }}
+          >
             <table className="w-full">
-              <thead className="border-b">
+              <thead
+                className="border-b"
+                style={{
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 1,
+                  backgroundColor: "hsl(var(--card))", // Match card background
+                }}
+              >
                 <tr>
                   <th className="text-left p-4 font-medium">User</th>
                   <th className="text-left p-4 font-medium">Role</th>
@@ -584,13 +626,32 @@ export function UsersManagement() {
                   <th className="text-left p-4 font-medium">Actions</th>
                 </tr>
               </thead>
-              <tbody>
-                {filteredUsers.map((user: any, index: number) => {
-                  // Create a unique key using userId, email, and index to handle duplicates
-                  const uniqueKey = `${user.id}-${user.email}-${index}`;
+              {/* 4. This tbody is positioned relatively and given a total height */}
+              <tbody
+                style={{
+                  height: `${rowVirtualizer.getTotalSize()}px`,
+                  width: "100%",
+                  position: "relative",
+                }}
+              >
+                {/* 5. Map over the VIRTUAL items, not the full array */}
+                {rowVirtualizer.getVirtualItems().map((virtualItem) => {
+                  const user = filteredUsers[virtualItem.index];
 
                   return (
-                    <tr key={uniqueKey} className="border-b hover:bg-muted/50">
+                    <tr
+                      key={user.id}
+                      style={{
+                        position: "absolute",
+                        top: 0,
+                        left: 0,
+                        width: "100%",
+                        height: `${virtualItem.size}px`,
+                        transform: `translateY(${virtualItem.start}px)`,
+                      }}
+                      className="border-b hover:bg-muted/50"
+                    >
+                      {/* --- All your original <td> cells go here --- */}
                       <td className="p-4">
                         <div>
                           <div className="font-medium">{user.name}</div>
@@ -666,7 +727,7 @@ export function UsersManagement() {
         </CardContent>
       </Card>
 
-      {/* User Dialog */}
+      {/* --- User Dialog (Unchanged) --- */}
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
         <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
@@ -703,7 +764,6 @@ export function UsersManagement() {
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address *</Label>
                 <Input
@@ -717,7 +777,6 @@ export function UsersManagement() {
                 />
               </div>
             </div>
-
             {!editingUser && (
               <div className="space-y-2">
                 <Label htmlFor="password">Password *</Label>
@@ -733,7 +792,6 @@ export function UsersManagement() {
                 />
               </div>
             )}
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone Number *</Label>
@@ -748,7 +806,6 @@ export function UsersManagement() {
                   required
                 />
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="emiratesId">Emirates ID</Label>
                 <Input
@@ -761,7 +818,6 @@ export function UsersManagement() {
                 />
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="gender">Gender *</Label>
@@ -782,7 +838,6 @@ export function UsersManagement() {
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="staffId">Staff ID</Label>
                 <Input
@@ -795,7 +850,6 @@ export function UsersManagement() {
                 />
               </div>
             </div>
-
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="role">Role *</Label>
@@ -815,7 +869,6 @@ export function UsersManagement() {
                   </SelectContent>
                 </Select>
               </div>
-
               <div className="space-y-2">
                 <Label htmlFor="position">Position</Label>
                 <Select
@@ -852,14 +905,11 @@ export function UsersManagement() {
                 )}
               </div>
             </div>
-
-            {/* Rank is now determined by role, not manually set */}
             <div className="space-y-2">
               <Label className="text-sm text-muted-foreground">
                 Rank will be automatically assigned based on the selected role
               </Label>
             </div>
-
             <div className="space-y-2">
               <Label htmlFor="status">Status</Label>
               <Select
@@ -877,7 +927,6 @@ export function UsersManagement() {
                 </SelectContent>
               </Select>
             </div>
-
             <div className="flex gap-3">
               <Button
                 type="button"

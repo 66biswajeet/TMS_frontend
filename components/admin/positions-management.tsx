@@ -46,12 +46,15 @@ import {
   CheckCircle,
 } from "lucide-react";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
+import { api } from "@/lib/axios";
 
 interface Position {
   PositionId: string;
   Name: string;
   IsActive: boolean;
   CreatedAt?: string;
+  BranchId?: string;
+  BranchName?: string;
 }
 
 // Define role-specific positions mapping
@@ -110,9 +113,12 @@ export function PositionsManagement() {
     useState(false);
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>("");
+  const [branches, setBranches] = useState<any[]>([]);
+
   const [formData, setFormData] = useState({
     Name: "",
     IsActive: true,
+    BranchId: "",
   });
 
   const filteredPositions = positions.filter((position: any) => {
@@ -168,6 +174,7 @@ export function PositionsManagement() {
     setFormData({
       Name: "",
       IsActive: true,
+      BranchId: "",
     });
     setIsDialogOpen(true);
   };
@@ -177,6 +184,7 @@ export function PositionsManagement() {
     setFormData({
       Name: position.Name,
       IsActive: position.IsActive,
+      BranchId: position.BranchId || "",
     });
     setIsDialogOpen(true);
   };
@@ -204,6 +212,32 @@ export function PositionsManagement() {
       });
     }
   };
+
+  useEffect(() => {
+    dispatch(fetchPositions() as any);
+
+    // Fetch branches for the dropdown
+    const fetchBranches = async () => {
+      try {
+        // Use your api.get helper, not fetch
+        // The endpoint is "/branches" which maps to 'listBranches'
+        const response = await api.get("/branches");
+
+        if (response.data.success) {
+          setBranches(response.data.items);
+        } else {
+          // Use the error message from the API if it exists
+          showError(response.data.message || "Failed to load branches");
+        }
+      } catch (error: any) {
+        console.error("Error fetching branches:", error);
+        // Show a more specific error from the catch block
+        showError(error.message || "Error fetching branches");
+      }
+    };
+
+    fetchBranches();
+  }, [dispatch]);
 
   const getStatusColor = (isActive: boolean) => {
     return isActive ? "default" : "secondary";
@@ -466,6 +500,33 @@ export function PositionsManagement() {
                 required
               />
             </div>
+
+            {/* ----- ADD THIS SECTION FOR BRANCHES ----- */}
+            <div className="space-y-2">
+              <Label htmlFor="BranchId">Assign to Branch (Optional)</Label>
+              <Select
+                value={formData.BranchId}
+                onValueChange={(value) =>
+                  setFormData({
+                    ...formData,
+                    BranchId: value === "global" ? "" : value,
+                  })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Select a branch" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="global">Global (No Branch)</SelectItem>
+                  {branches.map((branch) => (
+                    <SelectItem key={branch.BranchId} value={branch.BranchId}>
+                      {branch.BranchName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* ------------------------------------------- */}
 
             <div className="space-y-2">
               <Label htmlFor="IsActive">Status</Label>
