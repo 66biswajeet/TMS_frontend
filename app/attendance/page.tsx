@@ -2387,29 +2387,97 @@ export default function AttendancePage() {
     // setShowCameraModal(false);
   };
 
+  // const handleCheckOut = useCallback(async () => {
+  //   // Check-out is blocked if not checked in, already checked out, OR TOO LATE
+  //   const isCheckOutBlocked =
+  //     isProcessing ||
+  //     loading ||
+  //     !record?.CheckInAt ||
+  //     !!record?.CheckOutAt ||
+  //     isBeforeExpectedCheckOut;
+
+  //   if (isCheckOutBlocked) {
+  //     let statusMessage = "Check-out blocked.";
+  //     if (isBeforeExpectedCheckOut) {
+  //       // <-- NEW/UPDATED CONDITION
+  //       const expectedTimeDisplay = formatTime(
+  //         expectedTimings?.ExpectedCheckOut || "18:00:00"
+  //       );
+  //       statusMessage = `❌ Check-Out blocked. You must wait until ${expectedTimeDisplay} (Expected Check-Out Time) to log out.`;
+  //     } else if (!record?.CheckInAt) {
+  //       statusMessage = "❌ Check-Out blocked. You must check in first.";
+  //     }
+  //     setLocationStatus(statusMessage);
+  //     return;
+  //   }
+
+  //   console.log("handleCheckOut called. Current record:", record); // Log 1: Initial state
+  //   setIsProcessing(true);
+  //   setLocationStatus("Sending check-out request...");
+  //   try {
+  //     const result = await postData(`${API_BASE_URL}/check-out`, {});
+  //     if (result.ok) {
+  //       setLocationStatus(`✅ Check-Out Success!`);
+  //       console.log("Check-out API Success.");
+  //       const optimisticCheckOutTime = new Date().toISOString();
+  //       setRecord((prevRecord) => {
+  //         if (!prevRecord) return null;
+  //         return {
+  //           ...prevRecord,
+  //           // Use current time as a placeholder until refresh loads exact time
+  //           CheckOutAt: new Date().toISOString(),
+  //         };
+  //       });
+  //       await fetchAttendanceRecord();
+  //       await fetchAttendanceHistory();
+  //     } else {
+  //       setLocationStatus(
+  //         `❌ Check-Out Failed: ${result.data.message || "Server error."}`
+  //       );
+  //     }
+  //   } catch (error) {
+  //     setLocationStatus("Network error during check-out.");
+  //   } finally {
+  //     setIsProcessing(false);
+  //   }
+  // }, [
+  //   fetchAttendanceRecord,
+  //   fetchAttendanceHistory,
+  //   isBeforeExpectedCheckOut,
+  //   isProcessing,
+  //   loading,
+  //   record,
+  //   expectedTimings,
+  // ]);
+
+  // Inside the AttendancePage component in app/attendance/page.tsx
+
   const handleCheckOut = useCallback(async () => {
-    // Check-out is blocked if not checked in, already checked out, OR TOO LATE
+    // Determine if check-out should be blocked
     const isCheckOutBlocked =
       isProcessing ||
       loading ||
       !record?.CheckInAt ||
-      !!record?.CheckOutAt ||
-      isBeforeExpectedCheckOut;
+      !!record?.CheckOutAt || // Already checked out
+      isBeforeExpectedCheckOut; // Too early based on expected time
 
     if (isCheckOutBlocked) {
       let statusMessage = "Check-out blocked.";
       if (isBeforeExpectedCheckOut) {
-        // <-- NEW/UPDATED CONDITION
         const expectedTimeDisplay = formatTime(
-          expectedTimings?.ExpectedCheckOut || "18:00:00"
+          expectedTimings?.ExpectedCheckOut || "18:00:00" // Default fallback time
         );
         statusMessage = `❌ Check-Out blocked. You must wait until ${expectedTimeDisplay} (Expected Check-Out Time) to log out.`;
       } else if (!record?.CheckInAt) {
         statusMessage = "❌ Check-Out blocked. You must check in first.";
+      } else if (!!record?.CheckOutAt) {
+        statusMessage = "❌ Check-Out blocked. Already checked out for today.";
       }
       setLocationStatus(statusMessage);
       return;
     }
+
+    console.log("handleCheckOut called. Current record:", record); // Log 1: Initial state
 
     setIsProcessing(true);
     setLocationStatus("Sending check-out request...");
@@ -2417,27 +2485,89 @@ export default function AttendancePage() {
       const result = await postData(`${API_BASE_URL}/check-out`, {});
       if (result.ok) {
         setLocationStatus(`✅ Check-Out Success!`);
+        console.log("Check-out API Success."); // Log 2: API result
+
+        // --- OPTIMISTIC UPDATE ---
+        const optimisticCheckOutTime = new Date().toISOString(); // Store the current time
+        setRecord((prevRecord) => {
+          console.log(
+            "Optimistic setRecord START. Prev CheckOutAt:",
+            prevRecord?.CheckOutAt
+          ); // Log 3
+          if (!prevRecord) return null; // Should ideally not happen if button was enabled
+          const updatedRecord = {
+            ...prevRecord,
+            CheckOutAt: optimisticCheckOutTime, // Use the stored optimistic time
+          };
+          console.log(
+            "Optimistic setRecord END. New CheckOutAt:",
+            updatedRecord.CheckOutAt
+          ); // Log 4
+          return updatedRecord;
+        });
+        // --- END OPTIMISTIC UPDATE ---
+
+        // Fetch fresh data from the server afterwards to get the exact time
+        console.log("Calling fetchAttendanceRecord..."); // Log 5
         await fetchAttendanceRecord();
-        await fetchAttendanceHistory();
+        console.log("fetchAttendanceRecord FINISHED."); // Log 6
+        await fetchAttendanceHistory(); // Keep history fetch as well
       } else {
         setLocationStatus(
           `❌ Check-Out Failed: ${result.data.message || "Server error."}`
         );
+        console.error("Check-out API Failed:", result.data); // Log API error
+        // Optional: Could re-fetch here to revert optimistic update if needed
+        // await fetchAttendanceRecord();
       }
     } catch (error) {
       setLocationStatus("Network error during check-out.");
+      console.error("Network error in handleCheckOut:", error); // Log network error
+      // Optional: Could re-fetch here to revert optimistic update if needed
+      // await fetchAttendanceRecord();
     } finally {
       setIsProcessing(false);
     }
   }, [
-    fetchAttendanceRecord,
-    fetchAttendanceHistory,
-    isBeforeExpectedCheckOut,
+    // Ensure all dependencies used inside the function are listed
     isProcessing,
     loading,
     record,
+    isBeforeExpectedCheckOut,
     expectedTimings,
+    setLocationStatus,
+    setIsProcessing,
+    setRecord, // Crucial dependency for optimistic update
+    fetchAttendanceRecord,
+    fetchAttendanceHistory,
+    // Note: formatTime is usually defined outside and stable, but include if necessary
   ]);
+
+  // --- ADD THESE LOGS OUTSIDE handleCheckOut ---
+
+  // Log the record state whenever it changes
+  useEffect(() => {
+    console.log("Record state CHANGED:", record); // Log 7: See state after any update
+  }, [record]);
+
+  // Log the calculated disabled state whenever relevant states change
+  // Make sure 'isCheckOutBlocked' used here refers to the one calculated for the button
+  const isCheckOutBlockedForButton = // Re-calculate or ensure scope allows access to the button's value
+    isProcessing ||
+    loading ||
+    !record?.CheckInAt ||
+    !!record?.CheckOutAt ||
+    isBeforeExpectedCheckOut;
+
+  useEffect(() => {
+    console.log(
+      "isCheckOutBlocked state calculated:",
+      isCheckOutBlockedForButton,
+      "|| CheckOutAt:",
+      record?.CheckOutAt
+    ); // Log 8: See derived state changes
+    // Depend on all factors that influence the button's disabled state
+  }, [isProcessing, loading, record, isBeforeExpectedCheckOut]);
 
   const handleBreakIn = useCallback(async () => {
     setIsProcessing(true);
@@ -2797,6 +2927,7 @@ export default function AttendancePage() {
                 <p className="text-sm font-semibold text-gray-600 mb-2">
                   Check-out Time
                 </p>
+
                 <p className="text-3xl font-extrabold text-red-700">
                   {formatTime(record?.CheckOutAt)}
                 </p>
@@ -2865,7 +2996,17 @@ export default function AttendancePage() {
           <Button
             variant="danger"
             onClick={handleCheckOut}
-            disabled={isCheckOutBlocked}
+            // disabled={isCheckOutBlocked}
+            disabled={(() => {
+              const isDisabled = isCheckOutBlocked;
+              console.log(
+                "Rendering Button. isDisabled:",
+                isDisabled,
+                "Based on CheckOutAt:",
+                record?.CheckOutAt
+              );
+              return isDisabled;
+            })()}
             className="w-full py-4 text-lg"
           >
             {isProcessing && record?.CheckInAt && !record?.CheckOutAt ? (

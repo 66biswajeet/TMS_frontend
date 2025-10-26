@@ -17,6 +17,7 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
+  const [showResetInfo, setShowResetInfo] = useState(false);
   const router = useRouter();
   const dispatch = useDispatch();
 
@@ -94,6 +95,15 @@ export default function LoginPage() {
 
     setIsLoading(false);
     console.log("Finalizing login and redirecting for role:", user.role);
+
+    // --- NEW: Check forcePasswordChange flag ---
+    // Backend should send this as boolean (true/false)
+    if (user.forcePasswordChange === true) {
+      console.log("Redirecting to force password change page.");
+      router.push("/force-change-password"); // Redirect to the dedicated page
+      return; // Stop further redirection attempts
+    }
+    // --- END NEW CHECK ---
 
     // Redirect based on user role
     switch (user.role) {
@@ -230,6 +240,16 @@ export default function LoginPage() {
                 </div>
               </div>
             </div>
+            {showResetInfo && (
+              <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-yellow-800 text-sm flex items-start gap-3">
+                {/* <AlertTriangle className="w-5 h-5 mt-0.5 flex-shrink-0" />{" "}
+                Optional: Add AlertTriangle import */}
+                <span>
+                  Please contact your HR Administrator or Manager to request a
+                  password reset.
+                </span>
+              </div>
+            )}
 
             {error && (
               <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -281,6 +301,7 @@ export default function LoginPage() {
                   </label>
                   <button
                     type="button"
+                    onClick={() => setShowResetInfo(!showResetInfo)} // Toggle info visibility
                     className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
                   >
                     Forgot password?

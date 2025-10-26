@@ -46,9 +46,13 @@ import {
   Users,
   UserCheck,
   Building,
+  Lock, // <-- ADD
+  Copy, // <-- ADD
+  Check, // <-- ADD
 } from "lucide-react";
 // Import the virtualization hook
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { apiFetch } from "@/lib/api";
 
 // --- Debounce Hook (put this in hooks/useDebounce.ts or keep it here) ---
 function useDebounce<T>(value: T, delay: number): T {
@@ -119,6 +123,125 @@ const ROLE_POSITIONS = {
   admin: ["System Administrator", "IT Manager"],
 };
 
+// --- NEW: Reset Password Modal Component ---
+const ResetPasswordModal: React.FC<{
+  userName: string | null;
+  tempPassword?: string | null;
+  onClose: () => void;
+  isLoading: boolean;
+  error?: string | null;
+}> = ({ userName, tempPassword, onClose, isLoading, error }) => {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    if (tempPassword) {
+      // Use modern clipboard API first, fallback to execCommand
+      navigator.clipboard
+        .writeText(tempPassword)
+        .then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
+        })
+        .catch((err) => {
+          console.error("Clipboard API failed:", err);
+          try {
+            // Fallback using execCommand
+            const textArea = document.createElement("textarea");
+            textArea.value = tempPassword;
+            textArea.style.position = "fixed"; // Prevent scrolling
+            textArea.style.opacity = "0";
+            document.body.appendChild(textArea);
+            textArea.focus();
+            textArea.select();
+            document.execCommand("copy");
+            document.body.removeChild(textArea);
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+          } catch (execErr) {
+            console.error("execCommand fallback failed:", execErr);
+            alert(
+              "Failed to copy password automatically. Please copy it manually."
+            );
+          }
+        });
+    }
+  };
+
+  return (
+    // Use Dialog components from your UI library (e.g., shadcn/ui)
+    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Password Reset Confirmation</DialogTitle>
+          {userName && (
+            <DialogDescription>
+              For User: <span className="font-semibold">{userName}</span>
+            </DialogDescription>
+          )}
+        </DialogHeader>
+        <div className="py-4 text-center">
+          {isLoading ? (
+            <div className="flex flex-col items-center justify-center min-h-[120px]">
+              {/* <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> */}
+              <p className="mt-3 text-gray-600">Resetting password...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center min-h-[120px] text-red-600">
+              {/* <AlertTriangle className="w-8 h-8 mb-3" /> */}
+              <p className="font-semibold">Error Resetting Password</p>
+              <p className="text-sm mt-1">{error}</p>
+            </div>
+          ) : tempPassword ? (
+            <>
+              <p className="text-sm text-gray-700 mb-3">
+                Password has been reset. Please securely communicate the
+                following temporary password to the user:
+              </p>
+              <div className="bg-gray-100 border border-gray-300 rounded-lg p-3 flex items-center justify-between mb-4">
+                <span className="font-mono text-lg font-bold text-gray-800 tracking-wider break-all">
+                  {tempPassword}
+                </span>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={handleCopy}
+                  className={`ml-2 transition ${
+                    copied
+                      ? "bg-green-100 text-green-700 hover:bg-green-200"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  }`}
+                  title={copied ? "Copied!" : "Copy password"}
+                >
+                  {copied ? (
+                    <Check className="w-4 h-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-orange-600 font-semibold mb-1">
+                IMPORTANT: Instruct the user to change this password immediately
+                after logging in.
+              </p>
+            </>
+          ) : (
+            <p className="text-red-600">
+              An unexpected error occurred. Temporary password not available.
+            </p>
+          )}
+        </div>
+        {/* Footer is often handled by DialogContent */}
+        {/* Optional: Add explicit close button if needed */}
+        <div className="flex justify-end pt-4 border-t">
+          <Button onClick={onClose} variant="outline">
+            Close
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+};
+
 export function UsersManagement() {
   const dispatch = useDispatch();
 
@@ -148,6 +271,85 @@ export function UsersManagement() {
   // --- DEBOUNCED SEARCH ---
   // This waits 300ms after the user stops typing before filtering
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+  // --- NEW: Handler for Reset Password Button Click ---
+  // const handleResetPasswordClick = async (userToReset: User) => {
+  //   // Use User type
+  //   // Show modal in loading state immediately
+  //   setResettingUser(userToReset);
+  //   setShowResetModal(true);
+  //   setResetLoading(true);
+  //   setResetError(null);
+  //   setTempPassword(null);
+
+  //   try {
+  //     // Use your API client (adjust path if your routes are different)
+  //     const response = await apiFetch(
+  //       `/users/${userToReset.id}/admin-reset-password`,
+  //       { method: "POST" }
+  //     );
+  //     console.log("Reset API Response:", response.data);
+
+  //     if (response.data.ok && response.data.temporaryPassword) {
+  //       setTempPassword(response.data.temporaryPassword);
+  //     } else {
+  //       // Use the error message from the API if available
+  //       throw new Error(
+  //         response.data.message || "Failed to get temporary password from API."
+  //       );
+  //     }
+  //   } catch (err: any) {
+  //     console.error("Password reset failed:", err);
+  //     // Display error from API or a generic message
+  //     setResetError(
+  //       err.response?.data?.message ||
+  //         err.message ||
+  //         "An unknown error occurred during password reset."
+  //     );
+  //   } finally {
+  //     setResetLoading(false); // Stop loading indicator regardless of success/fail
+  //   }
+  // };
+
+  // --- NEW: Handler for Reset Password Button Click ---
+  const handleResetPasswordClick = async (userToReset: User) => {
+    // Use User type
+    // Show modal in loading state immediately
+    setResettingUser(userToReset);
+    setShowResetModal(true);
+    setResetLoading(true);
+    setResetError(null);
+    setTempPassword(null);
+
+    try {
+      // Use your API client (adjust path if your routes are different)
+      const response = await apiFetch(
+        `/users/${userToReset.id}/admin-reset-password`,
+        { method: "POST" }
+      );
+
+      // FIX 1: 'response' IS the data. There is no '.data' property.
+      console.log("Reset API Response:", response);
+
+      // FIX 2: Check 'response.ok' and 'response.temporaryPassword' directly
+      if (response.ok && response.temporaryPassword) {
+        setTempPassword(response.temporaryPassword); // <-- FIX 3: Removed .data
+      } else {
+        // Use the error message from the API if available
+        throw new Error(
+          response.message || "Failed to get temporary password from API." // <-- FIX 4: Removed .data
+        );
+      }
+    } catch (err: any) {
+      console.error("Password reset failed:", err);
+      // This catch block is fine and will correctly read the error message
+      setResetError(
+        err.message || "An unknown error occurred during password reset."
+      );
+    } finally {
+      setResetLoading(false); // Stop loading indicator regardless of success/fail
+    }
+  };
 
   // Re-fetch users when branch filter changes
   useEffect(() => {
@@ -179,6 +381,14 @@ export function UsersManagement() {
     rank: 10,
     status: "active",
   });
+
+  // --- NEW STATE for Reset Modal ---
+  const [showResetModal, setShowResetModal] = useState(false);
+  const [resettingUser, setResettingUser] = useState<User | null>(null); // Store user being reset
+  const [tempPassword, setTempPassword] = useState<string | null>(null);
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
+  // --- END NEW STATE ---
 
   // --- MEMOIZED & CALLBACK FUNCTIONS ---
 
@@ -707,6 +917,16 @@ export function UsersManagement() {
                             <Edit className="h-3 w-3 mr-1" />
                             Edit
                           </Button>
+
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleResetPasswordClick(user)} // Pass the user object
+                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50" // Example styling
+                          >
+                            <Lock className="h-3 w-3 mr-1" />
+                            Reset Pass
+                          </Button>
                           <Button
                             variant="outline"
                             size="sm"
@@ -943,6 +1163,23 @@ export function UsersManagement() {
           </form>
         </DialogContent>
       </Dialog>
+
+      {/* --- NEW Reset Password Modal Rendering --- */}
+      {showResetModal && resettingUser && (
+        <ResetPasswordModal
+          userName={resettingUser.name} // Pass the name
+          tempPassword={tempPassword}
+          isLoading={resetLoading}
+          error={resetError}
+          onClose={() => {
+            setShowResetModal(false);
+            setResettingUser(null);
+            setTempPassword(null);
+            setResetError(null);
+          }}
+        />
+      )}
+      {/* --- END NEW Modal Rendering --- */}
     </div>
   );
 }
