@@ -99,6 +99,7 @@ interface User {
 //     "Assistant Pharmacist",
 //     "Pharmacy Technician",
 //     "Cashier",
+    "HR",
 //     "Inventory Clerk",
 //     "Customer Service Representative",
 //   ],

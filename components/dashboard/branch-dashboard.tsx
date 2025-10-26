@@ -42,6 +42,9 @@ interface DashboardKPIs {
   AvgChecklistCompletion: number;
   AvgCompletionHours: number;
   SLABreachCount: number;
+  checklistCompletionPercentage: number;
+  completedChecklistItems: number;
+  totalChecklistItems: number;
 }
 
 interface StaffMember {
@@ -52,8 +55,11 @@ interface StaffMember {
   TotalTasks: number;
   CompletedTasks: number;
   OverdueTasks: number;
-  CompletionRate: number;
+  TaskCompletionRate: number;
   AvgProgress: number;
+  ChecklistCompletionPercentage: number;
+  CompletedChecklistItems: number;
+  TotalChecklistItems: number;
 }
 
 export const BranchDashboard: React.FC = () => {
@@ -76,13 +82,17 @@ export const BranchDashboard: React.FC = () => {
       // Fetch branch metrics using TMS axios
       try {
         const branchResponse = await api.get("/metrics/branch");
+        const checklistCompletion = await api.get("/metrics/checklistcount");
         const branchData = branchResponse.data;
-        console.log("✅ Real TMS branch metrics:", branchData);
 
         // Calculate realistic branch manager KPIs (avoid 0% values)
         const activeTasks = Math.max(branchData.activeTasks); // Minimum 20 tasks
         const overdueTasks = Math.max(branchData.overdueTasks); // At least 1 overdue
         const completionRate = Math.max(branchData.complianceRate); // Minimum 80%
+        const checklistCompletionPercentage =
+          branchData.checklistCompletionPercentage;
+        const completedChecklistItems = branchData.completedChecklistItems; // <-- Get from branchData
+        const totalChecklistItems = branchData.totalChecklistItems;
 
         setKpis({
           TasksCreated: activeTasks,
@@ -94,6 +104,9 @@ export const BranchDashboard: React.FC = () => {
           AvgChecklistCompletion: Math.max(completionRate + 3),
           AvgCompletionHours: 2.5,
           SLABreachCount: overdueTasks,
+          checklistCompletionPercentage: checklistCompletionPercentage,
+          completedChecklistItems: completedChecklistItems,
+          totalChecklistItems: totalChecklistItems,
         });
       } catch (branchError) {
         console.log(
@@ -121,8 +134,12 @@ export const BranchDashboard: React.FC = () => {
                   TotalTasks: staff.TotalTasks, // Consistent task distribution
                   CompletedTasks: staff.CompletedTasks, // Consistent completion
                   OverdueTasks: staff.OverdueTasks, // 0, 1, 2 rotation
-                  CompletionRate: staff.CompletionRate, // 78%, 81%, 84%, 87%, 90%
+                  TaskCompletionRate: staff.TaskCompletionRate, // 78%, 81%, 84%, 87%, 90%
                   AvgProgress: 80 + index * 3, // Consistent progress
+                  ChecklistCompletionPercentage:
+                    staff.ChecklistCompletionPercentage,
+                  CompletedChecklistItems: staff.CompletedChecklistItems,
+                  TotalChecklistItems: staff.TotalChecklistItems,
                 }))
             : [
                 {
@@ -173,8 +190,9 @@ export const BranchDashboard: React.FC = () => {
             TotalTasks: 25,
             CompletedTasks: 23,
             OverdueTasks: 1,
-            CompletionRate: 92,
+            TaskCompletionRate: 92,
             AvgProgress: 95,
+            checklistCompletionPercentage: 92,
           },
           {
             UserId: "2",
@@ -280,10 +298,11 @@ export const BranchDashboard: React.FC = () => {
         },
         {
           title: "Staff Performance",
-          value: Math.round(
-            staffData.reduce((sum, staff) => sum + staff.CompletionRate, 0) /
-              staffData.length || 0
-          ),
+          // value: Math.round(
+          //   staffData.reduce((sum, staff) => sum + staff.CompletionRate, 0) /
+          //     staffData.length || 0
+          // ),
+          value: Math.round(kpis.checklistCompletionPercentage || 0),
           format: "percentage" as const,
           description: "Average staff performance",
           icon: Users,
@@ -338,7 +357,7 @@ export const BranchDashboard: React.FC = () => {
       sortable: true,
     },
     {
-      key: "CompletionRate",
+      key: "TaskCompletionRate",
       label: "Completion %",
       type: "heat" as const,
       sortable: true,
@@ -445,10 +464,10 @@ export const BranchDashboard: React.FC = () => {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4 text-center">
+                  {/* <div className="grid grid-cols-3 gap-4 text-center">
                     <div className="p-3 bg-green-50 rounded">
                       <div className="font-bold text-green-600">
-                        {staffData.filter((s) => s.CompletionRate >= 90).length}
+                        {kpis.completedChecklistItems}
                       </div>
                       <div className="text-xs text-green-600">Excellent</div>
                     </div>
@@ -469,6 +488,40 @@ export const BranchDashboard: React.FC = () => {
                       </div>
                       <div className="text-xs text-red-600">Needs Support</div>
                     </div>
+                  </div> */}
+
+                  <div className="grid grid-cols-3 gap-4 text-center">
+                    {/* Display Checklist Metrics from kpis (which holds branchData) */}
+                    {kpis ? (
+                      <>
+                        <div className="p-3 bg-blue-50 rounded-lg">
+                          <div className="font-bold text-blue-600 text-lg">
+                            {kpis.completedChecklistItems}
+                          </div>
+                          <div className="text-xs text-blue-700">
+                            Completed Items
+                          </div>
+                        </div>
+                        <div className="p-3 bg-gray-100 rounded-lg">
+                          <div className="font-bold text-gray-700 text-lg">
+                            {kpis.totalChecklistItems}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            Total Items
+                          </div>
+                        </div>
+                        <div className="p-3 bg-green-50 rounded-lg">
+                          <div className="font-bold text-green-600 text-lg">
+                            {kpis.checklistCompletionPercentage}%
+                          </div>
+                          <div className="text-xs text-green-700">
+                            Completion
+                          </div>
+                        </div>
+                      </>
+                    ) : (
+                      <p>Loading stats...</p>
+                    )}
                   </div>
 
                   <div className="space-y-2">
@@ -487,17 +540,21 @@ export const BranchDashboard: React.FC = () => {
                           <div
                             className={cn(
                               "font-bold text-sm",
-                              staff.CompletionRate >= 90
+                              staff.ChecklistCompletionPercentage >= 90
                                 ? "text-green-600"
-                                : staff.CompletionRate >= 70
+                                : staff.ChecklistCompletionPercentage >= 70
                                 ? "text-yellow-600"
                                 : "text-red-600"
                             )}
                           >
-                            {staff.CompletionRate}%
+                            {staff.ChecklistCompletionPercentage}%
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {staff.CompletedTasks}/{staff.TotalTasks} tasks
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {staff.CompletedChecklistItems}/
+                            {staff.TotalChecklistItems} checklist items
                           </div>
                         </div>
                       </div>

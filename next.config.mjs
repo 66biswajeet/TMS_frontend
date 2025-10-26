@@ -10,14 +10,17 @@ const nextConfig = {
     unoptimized: true,
   },
   // Add this configuration
-  allowedDevOrigins: ['192.168.59.194', 'localhost'],
-  
+  // allowedDevOrigins: ["http://192.168.1.4:3000", "localhost"],
+  devIndicators: {
+    allowedDevOrigins: ["https://192.168.1.4:3001", "localhost"],
+  },
+
   // Or if you want to allow all origins during development (less secure):
   // allowedDevOrigins: process.env.NODE_ENV === 'development' ? ['*'] : undefined,
-  
-  async rewrites() {
-    return []
-  }
-}
 
-export default nextConfig
+  async rewrites() {
+    return [];
+  },
+};
+
+export default nextConfig;

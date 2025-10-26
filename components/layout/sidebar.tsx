@@ -1,51 +1,83 @@
-"use client"
+"use client";
 
-import React from "react"
-import Image from "next/image"
-import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { navigationConfig, getUserNavigationItems, type NavItem } from "./nav.config"
-import { cn } from "@/lib/utils"
+import React from "react";
+import Image from "next/image";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ChevronLeft, ChevronRight, ChevronDown, X } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  navigationConfig,
+  getUserNavigationItems,
+  type NavItem,
+} from "./nav.config";
+import { cn } from "@/lib/utils";
+
+type AppUser = {
+  role: string;
+  position?: string;
+};
+
+// interface SidebarProps {
+//   isOpen: boolean
+//   isCollapsed: boolean
+//   onClose: () => void
+//   onToggleCollapse: () => void
+//   userRole: string
+//   className?: string
+// }
 
 interface SidebarProps {
-  isOpen: boolean
-  isCollapsed: boolean
-  onClose: () => void
-  onToggleCollapse: () => void
-  userRole: string
-  className?: string
+  isOpen: boolean;
+  isCollapsed: boolean;
+  onClose: () => void;
+  onToggleCollapse: () => void;
+  user: AppUser; // <-- Change this line
+  className?: string;
 }
 
 interface SidebarItemProps {
-  item: NavItem
-  isCollapsed: boolean
-  onItemClick: () => void
-  openDropdowns: Set<string>
-  onToggleDropdown: (label: string) => void
+  item: NavItem;
+  isCollapsed: boolean;
+  onItemClick: () => void;
+  openDropdowns: Set<string>;
+  onToggleDropdown: (label: string) => void;
 }
 
-function SidebarItem({ item, isCollapsed, onItemClick, openDropdowns, onToggleDropdown }: SidebarItemProps) {
-  const pathname = usePathname()
-  const isActive = item.href !== "#" && (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href))
-  const hasChildren = item.children && item.children.length > 0
-  const isDropdownOpen = openDropdowns.has(item.label)
-  const hasActiveChild = hasChildren && item.children!.some(child => 
-    child.href !== "#" && (child.href === "/" ? pathname === "/" : pathname.startsWith(child.href))
-  )
+function SidebarItem({
+  item,
+  isCollapsed,
+  onItemClick,
+  openDropdowns,
+  onToggleDropdown,
+}: SidebarItemProps) {
+  const pathname = usePathname();
+  const isActive =
+    item.href !== "#" &&
+    (item.href === "/" ? pathname === "/" : pathname.startsWith(item.href));
+  const hasChildren = item.children && item.children.length > 0;
+  const isDropdownOpen = openDropdowns.has(item.label);
+  const hasActiveChild =
+    hasChildren &&
+    item.children!.some(
+      (child) =>
+        child.href !== "#" &&
+        (child.href === "/"
+          ? pathname === "/"
+          : pathname.startsWith(child.href))
+    );
 
   const handleClick = () => {
     if (hasChildren && !isCollapsed) {
-      onToggleDropdown(item.label)
+      onToggleDropdown(item.label);
     } else if (item.href !== "#") {
-      onItemClick()
+      onItemClick();
     }
-  }
+  };
 
-  const Icon = item.icon
+  const Icon = item.icon;
 
   return (
     <div>
@@ -54,20 +86,29 @@ function SidebarItem({ item, isCollapsed, onItemClick, openDropdowns, onToggleDr
           className={cn(
             "group relative flex items-center justify-between overflow-hidden rounded-lg transition-all duration-200 ease-in-out cursor-pointer",
             isCollapsed ? "px-2 py-2.5" : "px-3 py-2.5",
-            (isActive || hasActiveChild)
+            isActive || hasActiveChild
               ? "bg-gradient-to-r from-blue-50 to-emerald-50 text-blue-700 border-l-4 border-blue-500 shadow-sm"
               : "text-slate-700 hover:bg-slate-50 hover:shadow-sm"
           )}
           onClick={handleClick}
         >
-          <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+          <div
+            className={cn(
+              "flex items-center",
+              isCollapsed ? "justify-center" : "gap-3"
+            )}
+          >
             <Icon
               className={cn(
                 "h-5 w-5 shrink-0 transition-all duration-200",
-                (isActive || hasActiveChild) ? "text-blue-600" : "text-slate-500 group-hover:text-slate-700"
+                isActive || hasActiveChild
+                  ? "text-blue-600"
+                  : "text-slate-500 group-hover:text-slate-700"
               )}
             />
-            {!isCollapsed && <span className="truncate font-medium text-sm">{item.label}</span>}
+            {!isCollapsed && (
+              <span className="truncate font-medium text-sm">{item.label}</span>
+            )}
           </div>
           {!isCollapsed && hasChildren && (
             <ChevronDown
@@ -89,19 +130,28 @@ function SidebarItem({ item, isCollapsed, onItemClick, openDropdowns, onToggleDr
                 : "text-slate-700 hover:bg-slate-50 hover:shadow-sm"
             )}
           >
-            <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+            <div
+              className={cn(
+                "flex items-center",
+                isCollapsed ? "justify-center" : "gap-3"
+              )}
+            >
               <Icon
                 className={cn(
                   "h-5 w-5 shrink-0 transition-all duration-200",
-                  isActive ? "text-blue-600" : "text-slate-500 group-hover:text-slate-700"
+                  isActive
+                    ? "text-blue-600"
+                    : "text-slate-500 group-hover:text-slate-700"
                 )}
               />
-              {!isCollapsed && <span className="truncate font-medium text-sm">{item.label}</span>}
+              {!isCollapsed && (
+                <span className="truncate font-medium text-sm">
+                  {item.label}
+                </span>
+              )}
             </div>
             {!isCollapsed && item.badge && item.badge > 0 && (
-              <Badge
-                className="rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-medium min-w-[1.25rem] text-center"
-              >
+              <Badge className="rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-medium min-w-[1.25rem] text-center">
                 {item.badge}
               </Badge>
             )}
@@ -113,8 +163,12 @@ function SidebarItem({ item, isCollapsed, onItemClick, openDropdowns, onToggleDr
       {hasChildren && !isCollapsed && isDropdownOpen && (
         <div className="ml-6 mt-1 space-y-1 border-l border-slate-200 pl-2">
           {item.children!.map((child) => {
-            const childIsActive = child.href !== "#" && (child.href === "/" ? pathname === "/" : pathname.startsWith(child.href))
-            const ChildIcon = child.icon
+            const childIsActive =
+              child.href !== "#" &&
+              (child.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(child.href));
+            const ChildIcon = child.icon;
 
             return (
               <Link key={child.label} href={child.href} onClick={onItemClick}>
@@ -129,66 +183,74 @@ function SidebarItem({ item, isCollapsed, onItemClick, openDropdowns, onToggleDr
                   <ChildIcon className="h-4 w-4" />
                   <span className="text-sm">{child.label}</span>
                   {child.badge && child.badge > 0 && (
-                    <Badge
-                      className="ml-auto rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-medium"
-                    >
+                    <Badge className="ml-auto rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-medium">
                       {child.badge}
                     </Badge>
                   )}
                 </div>
               </Link>
-            )
+            );
           })}
         </div>
       )}
     </div>
-  )
+  );
 }
 
-export function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, userRole, className }: SidebarProps) {
-  const [openDropdowns, setOpenDropdowns] = React.useState<Set<string>>(new Set())
-  const [isClient, setIsClient] = React.useState(false)
+export function Sidebar({
+  isOpen,
+  isCollapsed,
+  onClose,
+  onToggleCollapse,
+  // userRole,
+  user,
+  className,
+}: SidebarProps) {
+  const [openDropdowns, setOpenDropdowns] = React.useState<Set<string>>(
+    new Set()
+  );
+  const [isClient, setIsClient] = React.useState(false);
 
   React.useEffect(() => {
-    setIsClient(true)
-  }, [])
+    setIsClient(true);
+  }, []);
 
   React.useEffect(() => {
     // Auto-close dropdowns when sidebar is collapsed
     if (isCollapsed) {
-      setOpenDropdowns(new Set())
+      setOpenDropdowns(new Set());
     }
-  }, [isCollapsed])
+  }, [isCollapsed]);
 
   React.useEffect(() => {
     // Prevent body scroll when mobile sidebar is open
     if (isOpen) {
-      document.body.style.overflow = "hidden"
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = ""
+      document.body.style.overflow = "";
     }
 
     return () => {
-      document.body.style.overflow = ""
-    }
-  }, [isOpen])
+      document.body.style.overflow = "";
+    };
+  }, [isOpen]);
 
   const handleToggleDropdown = (label: string) => {
-    const newOpenDropdowns = new Set(openDropdowns)
+    const newOpenDropdowns = new Set(openDropdowns);
     if (newOpenDropdowns.has(label)) {
-      newOpenDropdowns.delete(label)
+      newOpenDropdowns.delete(label);
     } else {
-      newOpenDropdowns.add(label)
+      newOpenDropdowns.add(label);
     }
-    setOpenDropdowns(newOpenDropdowns)
-  }
+    setOpenDropdowns(newOpenDropdowns);
+  };
 
   const handleItemClick = () => {
     // Close mobile sidebar on item click
-    onClose()
-  }
+    onClose();
+  };
 
-  const filteredMenuItems = isClient ? getUserNavigationItems(userRole) : []
+  const filteredMenuItems = isClient ? getUserNavigationItems(user) : [];
 
   const sidebarContent = (
     <div className="flex h-full flex-col">
@@ -213,7 +275,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, userRo
             </div>
           )}
         </div>
-        
+
         {/* Close button for mobile */}
         <Button
           variant="ghost"
@@ -266,7 +328,7 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, userRo
         )}
       </Button>
     </div>
-  )
+  );
 
   return (
     <>
@@ -285,15 +347,14 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, userRo
       <div
         className={cn(
           "lg:hidden fixed inset-0 z-40 transition-opacity duration-300",
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          isOpen
+            ? "opacity-100 pointer-events-auto"
+            : "opacity-0 pointer-events-none"
         )}
       >
         {/* Backdrop */}
-        <div
-          className="absolute inset-0 bg-black/30"
-          onClick={onClose}
-        />
-        
+        <div className="absolute inset-0 bg-black/30" onClick={onClose} />
+
         {/* Mobile drawer */}
         <aside
           className={cn(
@@ -305,5 +366,5 @@ export function Sidebar({ isOpen, isCollapsed, onClose, onToggleCollapse, userRo
         </aside>
       </div>
     </>
-  )
+  );
 }

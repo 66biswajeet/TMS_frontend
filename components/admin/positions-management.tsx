@@ -64,6 +64,7 @@ const ROLE_POSITIONS = {
     { id: "assistant_pharmacist", name: "Assistant Pharmacist" },
     { id: "pharmacy_technician", name: "Pharmacy Technician" },
     { id: "cashier", name: "Cashier" },
+    { id: "hr", name: "HR" },
     { id: "inventory_clerk", name: "Inventory Clerk" },
     { id: "customer_service", name: "Customer Service Representative" },
   ],
