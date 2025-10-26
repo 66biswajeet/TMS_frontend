@@ -40,8 +40,8 @@ interface Query {
   RaisedAt: string;
   ResolvedBy: string | null;
   ResolutionNotes: string | null;
-  FullName?: string;
-  StaffId?: string;
+  UserName?: string;
+  UserStaffId?: string;
 }
 
 // Enhanced Button Component
@@ -579,8 +579,8 @@ export default function QueryResolutionPortal() {
           q.Subject.toLowerCase().includes(searchTerm.toLowerCase()) ||
           q.Message.toLowerCase().includes(searchTerm.toLowerCase()) ||
           q.QueryId.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          q.FullName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          q.StaffId?.toLowerCase().includes(searchTerm.toLowerCase())
+          q.UserName?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          q.UserStaffId?.toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -754,15 +754,15 @@ export default function QueryResolutionPortal() {
                       </div>
 
                       <div className="flex flex-wrap gap-3 text-xs text-gray-500">
-                        {query.FullName && (
+                        {query.UserName && (
                           <span className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full">
                             <User className="w-3 h-3" />
-                            {query.FullName}
+                            {query.UserName}
                           </span>
                         )}
-                        {query.StaffId && (
+                        {query.UserStaffId && (
                           <span className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full font-mono">
-                            ID: {query.StaffId}
+                            ID: {query.UserStaffId}
                           </span>
                         )}
                         <span className="flex items-center gap-1 bg-gray-100 px-3 py-1 rounded-full">

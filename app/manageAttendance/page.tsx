@@ -1,998 +1,6 @@
-"use client";
-import React, { useState, useEffect, useCallback, useMemo } from "react";
-import {
-  Loader2,
-  Users,
-  Clock,
-  Filter,
-  AlertTriangle,
-  X,
-  MapPin,
-  Calendar,
-  TrendingUp,
-  Pencil, // Added icon
-} from "lucide-react";
-import {
-  LineChart,
-  Line,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
-
-// --- CONFIGURATION ---
-const API_BASE_URL = "http://localhost:5050";
-
-// --- TYPES ---
-interface HistoryFilterParams {
-  branchId?: string;
-  positionId?: string;
-  startDate?: string;
-  endDate?: string;
-}
-
-interface SummaryData {
-  totalEntries: number;
-  totalUsers: number;
-  totalWorkHours: string;
-}
-
-interface DetailedAttendanceRecord {
-  AttendanceId: string;
-  WorkDate: string;
-  CheckInAt: string | null;
-  CheckOutAt: string | null;
-  BreakInAt: string | null;
-  BreakOutAt: string | null;
-  SelfiePhotoUrl: string | null;
-  FullName: string;
-  StaffId: string;
-  PositionName: string | null;
-  BranchName: string | null;
-  WorkDurationHours: number | null;
-}
-
-interface FilterOption {
-  [key: string]: any;
-}
-
-// --- UTILITY FUNCTIONS ---
-const formatDate = (dateString: string) => {
-  if (!dateString) return "N/A";
-  return new Date(dateString).toLocaleDateString();
-};
-
-const formatTime = (timeString: string | null) => {
-  if (!timeString) return "—";
-  return new Date(timeString).toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-};
-
-const formatDuration = (hours: number | null) => {
-  if (hours === null) return "—";
-  const h = Math.floor(hours);
-  const m = Math.floor((hours - h) * 60);
-  return `${h}h ${m}m`;
-};
-
-const calculateBreakDuration = (
-  breakIn: string | null,
-  breakOut: string | null
-) => {
-  if (!breakIn) return "—";
-  try {
-    const inTime = new Date(breakIn).getTime();
-    const outTime = breakOut ? new Date(breakOut).getTime() : Date.now();
-    const diffMs = outTime - inTime;
-    const hours = Math.floor(diffMs / (1000 * 60 * 60));
-    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours}h ${minutes}m`;
-  } catch {
-    return "—";
-  }
-};
-
-/**
- * Formats a Date object into 'YYYY-MM-DDTHH:MM' for datetime-local input
- */
-const formatToISOLocal = (date: Date): string => {
-  const pad = (num: number) => num.toString().padStart(2, "0");
-  const year = date.getFullYear();
-  const month = pad(date.getMonth() + 1);
-  const day = pad(date.getDate());
-  const hours = pad(date.getHours());
-  const minutes = pad(date.getMinutes());
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-};
-
-const fetchFilterOptions = async (endpoint: string) => {
-  const token = localStorage.getItem("token");
-  if (!token) return [];
-
-  try {
-    const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-
-    if (response.ok) {
-      const fullResponse = await response.json();
-      const dataToMap = fullResponse.items || [];
-
-      return dataToMap.map((item: any) => ({
-        id: item.BranchId || item.PositionId || item.id,
-        name: item.BranchName || item.PositionName || item.Name || item.name,
-      }));
-    } else {
-      console.error(`API ${endpoint} failed:`, await response.text());
-    }
-  } catch (error) {
-    console.error(`Failed to fetch ${endpoint}:`, error);
-  }
-  return [];
-};
-
-// Added new patchData function
-const patchData = async (url: string, data: any) => {
-  const token = window.localStorage?.getItem("token");
-  const response = await fetch(url, {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...(token && { Authorization: `Bearer ${token}` }),
-    },
-    body: JSON.stringify(data),
-  });
-  return {
-    data: await response.json().catch(() => ({ message: response.statusText })),
-    ok: response.ok,
-    status: response.status,
-  };
-};
-
-// --- COMPONENTS ---
-
-// Detailed View Modal Component
-// Updated Modal Props
-const AttendanceDetailModal: React.FC<{
-  record: DetailedAttendanceRecord;
-  allRecords: DetailedAttendanceRecord[];
-  onClose: () => void;
-  onRecordUpdate: () => void; // <-- ADDED PROP
-}> = ({ record, allRecords, onClose, onRecordUpdate }) => {
-  // <-- ADDED PROP
-  // Generate chart data for the last 7 days for this specific staff
-  const chartData = useMemo(() => {
-    const staffRecords = allRecords
-      .filter((r) => r.StaffId === record.StaffId)
-      .sort(
-        (a, b) =>
-          new Date(a.WorkDate).getTime() - new Date(b.WorkDate).getTime()
-      )
-      .slice(-7);
-
-    return staffRecords.map((r) => ({
-      date: new Date(r.WorkDate).toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-      }),
-      hours: r.WorkDurationHours || 0,
-      checkIn: r.CheckInAt
-        ? new Date(r.CheckInAt).getHours() +
-          new Date(r.CheckInAt).getMinutes() / 60
-        : 0,
-    }));
-  }, [record.StaffId, allRecords]);
-
-  // Calculate statistics
-  const stats = useMemo(() => {
-    const staffRecords = allRecords.filter((r) => r.StaffId === record.StaffId);
-    const totalHours = staffRecords.reduce(
-      (sum, r) => sum + (r.WorkDurationHours || 0),
-      0
-    );
-    const avgHours =
-      staffRecords.length > 0 ? totalHours / staffRecords.length : 0;
-    const completedShifts = staffRecords.filter(
-      (r) => r.CheckOutAt !== null
-    ).length;
-
-    return {
-      totalHours: totalHours.toFixed(2),
-      avgHours: avgHours.toFixed(2),
-      totalDays: staffRecords.length,
-      completedShifts,
-    };
-  }, [record.StaffId, allRecords]);
-
-  // Added state and edit handlers
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const handleEditTime = useCallback(
-    async (type: "check-in" | "check-out") => {
-      const isCheckIn = type === "check-in";
-      const timeToEdit = isCheckIn ? record.CheckInAt : record.CheckOutAt;
-
-      if (!timeToEdit) {
-        setError(`❌ No ${type} record to edit.`);
-        return;
-      }
-
-      const currentTime = new Date(timeToEdit);
-      const defaultValue = formatToISOLocal(currentTime);
-
-      const newTimeStr = window.prompt(
-        `Enter new ${isCheckIn ? "Check-In" : "Check-Out"} time:`,
-        defaultValue
-      );
-
-      if (!newTimeStr) return; // User cancelled
-
-      const newTime = new Date(newTimeStr);
-      if (isNaN(newTime.getTime())) {
-        setError("❌ Invalid date format.");
-        return;
-      }
-
-      setIsProcessing(true);
-      setError(null);
-
-      const res = await patchData(
-        `${API_BASE_URL}/attendance/record/${record.AttendanceId}/${type}`,
-        isCheckIn
-          ? { newCheckInTime: newTime.toISOString() }
-          : { newCheckOutTime: newTime.toISOString() }
-      );
-
-      if (res.ok) {
-        onRecordUpdate(); // This will refresh the parent component's data
-      } else {
-        setError(`❌ Update failed: ${res.data.message || "Server error."}`);
-      }
-      setIsProcessing(false);
-    },
-    [record, onRecordUpdate]
-  );
-  // --- END OF NEW CODE ---
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-t-2xl relative">
-          <button
-            onClick={onClose}
-            className="absolute top-4 right-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition"
-          >
-            <X className="w-5 h-5" />
-          </button>
-          <h2 className="text-2xl font-bold mb-2">Attendance Details</h2>
-          <p className="text-indigo-100 text-lg">{record.FullName}</p>
-          <p className="text-indigo-200 text-sm">Staff ID: {record.StaffId}</p>
-          <p className="text-indigo-200 text-sm">
-            {formatDate(record.WorkDate)}
-          </p>
-        </div>
-
-        <div className="p-6 space-y-6">
-          {/* Updated Time Details Card JSX */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Check In Card */}
-            <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl border border-green-200 relative">
-              {/* --- EDIT BUTTON --- */}
-              <button
-                onClick={() => handleEditTime("check-in")}
-                disabled={!record.CheckInAt || isProcessing}
-                title="Edit Check-In Time"
-                className="absolute top-3 right-3 p-1.5 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-all disabled:opacity-50 disabled:hover:bg-transparent"
-              >
-                {isProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Pencil className="w-4 h-4" />
-                )}
-              </button>
-              {/* --- END OF BUTTON --- */}
-
-              <div className="flex items-center mb-3">
-                <div className="p-2 bg-green-500 rounded-lg mr-3">
-                  <Clock className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-green-600 font-medium">Check In</p>
-                  <p className="text-2xl font-bold text-green-800">
-                    {formatTime(record.CheckInAt)}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-green-600">
-                {record.CheckInAt
-                  ? new Date(record.CheckInAt).toLocaleDateString()
-                  : "N/A"}
-              </p>
-            </div>
-
-            {/* Check Out Card */}
-            <div className="bg-gradient-to-br from-red-50 to-red-100 p-5 rounded-xl border border-red-200 relative">
-              {/* --- EDIT BUTTON --- */}
-              <button
-                onClick={() => handleEditTime("check-out")}
-                disabled={!record.CheckOutAt || isProcessing}
-                title="Edit Check-Out Time"
-                className="absolute top-3 right-3 p-1.5 rounded-full text-gray-500 hover:bg-gray-200 hover:text-gray-800 transition-all disabled:opacity-50 disabled:hover:bg-transparent"
-              >
-                {isProcessing ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <Pencil className="w-4 h-4" />
-                )}
-              </button>
-              {/* --- END OF BUTTON --- */}
-
-              <div className="flex items-center mb-3">
-                <div className="p-2 bg-red-500 rounded-lg mr-3">
-                  <Clock className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-red-600 font-medium">Check Out</p>
-                  <p className="text-2xl font-bold text-red-800">
-                    {record.CheckOutAt
-                      ? formatTime(record.CheckOutAt)
-                      : "Not yet"}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-red-600">
-                {record.CheckOutAt
-                  ? new Date(record.CheckOutAt).toLocaleDateString()
-                  : "Still working"}
-              </p>
-            </div>
-
-            {/* Break In Card (Unchanged) */}
-            <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-5 rounded-xl border border-orange-200">
-              <div className="flex items-center mb-3">
-                <div className="p-2 bg-orange-500 rounded-lg mr-3">
-                  <Clock className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-orange-600 font-medium">
-                    Break In
-                  </p>
-                  <p className="text-2xl font-bold text-orange-800">
-                    {formatTime(record.BreakInAt)}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-orange-600">
-                {record.BreakInAt
-                  ? new Date(record.BreakInAt).toLocaleDateString()
-                  : "No break taken"}
-              </p>
-            </div>
-
-            {/* Break Out Card (Unchanged) */}
-            <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-5 rounded-xl border border-yellow-200">
-              <div className="flex items-center mb-3">
-                <div className="p-2 bg-yellow-500 rounded-lg mr-3">
-                  <Clock className="w-5 h-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm text-yellow-600 font-medium">
-                    Break Out
-                  </p>
-                  <p className="text-2xl font-bold text-yellow-800">
-                    {formatTime(record.BreakOutAt)}
-                  </p>
-                </div>
-              </div>
-              <p className="text-xs text-yellow-600">
-                {record.BreakOutAt
-                  ? new Date(record.BreakOutAt).toLocaleDateString()
-                  : "Break ongoing"}
-              </p>
-            </div>
-          </div>
-          {/* --- END OF UPDATED SECTION --- */}
-
-          {/* Error Message Display */}
-          {error && (
-            <div className="p-3 bg-red-100 border border-red-300 text-red-800 rounded-lg text-sm">
-              {error}
-            </div>
-          )}
-
-          {/* Duration & Branch/Position */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 rounded-xl border border-indigo-200">
-              <p className="text-sm text-indigo-600 font-medium mb-2">
-                Work Duration
-              </p>
-              <p className="text-3xl font-bold text-indigo-800">
-                {formatDuration(record.WorkDurationHours)}
-              </p>
-              <p className="text-xs text-indigo-600 mt-2">
-                {record.WorkDurationHours !== null
-                  ? `${record.WorkDurationHours.toFixed(2)} hours`
-                  : "In progress"}
-              </p>
-            </div>
-
-            <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border border-purple-200">
-              <p className="text-sm text-purple-600 font-medium mb-2">
-                Break Duration
-              </p>
-              <p className="text-3xl font-bold text-purple-800">
-                {calculateBreakDuration(record.BreakInAt, record.BreakOutAt)}
-              </p>
-              <p className="text-xs text-purple-600 mt-2">Total break time</p>
-            </div>
-
-            <div className="bg-gradient-to-br from-pink-50 to-pink-100 p-5 rounded-xl border border-pink-200">
-              <div className="flex items-center mb-2">
-                <MapPin className="w-4 h-4 text-pink-600 mr-2" />
-                <p className="text-sm text-pink-600 font-medium">
-                  Branch & Position
-                </p>
-              </div>
-              <p className="text-sm font-semibold text-pink-800 mb-1">
-                {record.BranchName || "N/A Branch"}
-              </p>
-              <p className="text-sm text-pink-700">
-                {record.PositionName || "N/A Position"}
-              </p>
-            </div>
-          </div>
-
-          {/* Statistics Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-              <p className="text-xs text-blue-600 mb-1">Total Days</p>
-              <p className="text-2xl font-bold text-blue-800">
-                {stats.totalDays}
-              </p>
-            </div>
-            <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-              <p className="text-xs text-green-600 mb-1">Completed</p>
-              <p className="text-2xl font-bold text-green-800">
-                {stats.completedShifts}
-              </p>
-            </div>
-            <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-              <p className="text-xs text-purple-600 mb-1">Total Hours</p>
-              <p className="text-2xl font-bold text-purple-800">
-                {stats.totalHours}h
-              </p>
-            </div>
-            <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-              <p className="text-xs text-orange-600 mb-1">Avg Hours</p>
-              <p className="text-2xl font-bold text-orange-800">
-                {stats.avgHours}h
-              </p>
-            </div>
-          </div>
-
-          {/* Work Hours Chart */}
-          {chartData.length > 0 && (
-            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-              <div className="flex items-center mb-4">
-                <TrendingUp className="w-5 h-5 text-indigo-600 mr-2" />
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Last 7 Days Work Hours
-                </h3>
-              </div>
-              <ResponsiveContainer width="100%" height={250}>
-                <BarChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                  <XAxis
-                    dataKey="date"
-                    stroke="#666"
-                    style={{ fontSize: "12px" }}
-                  />
-                  <YAxis stroke="#666" style={{ fontSize: "12px" }} />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #ddd",
-                      borderRadius: "8px",
-                    }}
-                    formatter={(value: any) => [
-                      `${value.toFixed(2)} hours`,
-                      "Work Duration",
-                    ]}
-                  />
-                  <Bar dataKey="hours" fill="#6366f1" radius={[8, 8, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Check-In Time Trend */}
-          {chartData.length > 0 && (
-            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-              <div className="flex items-center mb-4">
-                <Calendar className="w-5 h-5 text-purple-600 mr-2" />
-                <h3 className="text-lg font-semibold text-gray-800">
-                  Check-In Time Pattern
-                </h3>
-              </div>
-              <ResponsiveContainer width="100%" height={200}>
-                <LineChart data={chartData}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-                  {/* --- THIS IS THE CORRECTED LINE --- */}
-                  <XAxis
-                    dataKey="date"
-                    stroke="#666"
-                    style={{ fontSize: "12px" }}
-                  />
-                  {/* --- END OF FIX --- */}
-                  <YAxis
-                    domain={[0, 24]}
-                    stroke="#666"
-                    style={{ fontSize: "12px" }}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: "#fff",
-                      border: "1px solid #ddd",
-                      borderRadius: "8px",
-                    }}
-                    formatter={(value: any) => {
-                      const hours = Math.floor(value);
-                      const minutes = Math.round((value - hours) * 60);
-                      return [
-                        `${hours}:${minutes.toString().padStart(2, "0")}`,
-                        "Check-In Time",
-                      ];
-                    }}
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="checkIn"
-                    stroke="#8b5cf6"
-                    strokeWidth={2}
-                    dot={{ fill: "#8b5cf6", r: 4 }}
-                  />
-                </LineChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Selfie Photo */}
-          {record.SelfiePhotoUrl && (
-            <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-              <h3 className="text-lg font-semibold text-gray-800 mb-3">
-                Check-In Selfie
-              </h3>
-              <div className="flex justify-center">
-                <img
-                  src={record.SelfiePhotoUrl}
-                  alt="Check-in selfie"
-                  className="max-w-full max-h-64 rounded-lg shadow-lg"
-                />
-              </div>
-              <a
-                href={record.SelfiePhotoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="block text-center mt-3 text-indigo-600 hover:text-indigo-800 font-medium"
-              >
-                View Full Size
-              </a>
-            </div>
-          )}
-        </div>
-
-        {/* Footer */}
-        <div className="bg-gray-50 p-4 rounded-b-2xl border-t flex justify-end">
-          <button
-            onClick={onClose}
-            className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
-          >
-            Close
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// Summary Card Component
-const SummaryCard: React.FC<{
-  icon: React.ReactNode;
-  title: string;
-  value: string | number;
-  gradient: string;
-}> = ({ icon, title, value, gradient }) => (
-  <div
-    className={`flex items-center p-6 rounded-xl shadow-lg border ${gradient}`}
-  >
-    <div className="p-3 bg-white bg-opacity-30 rounded-full mr-4">{icon}</div>
-    <div>
-      <p className="text-sm font-medium text-white text-opacity-90">{title}</p>
-      <p className="text-3xl font-bold text-white">{value}</p>
-    </div>
-  </div>
-);
-
-// Filter Dropdown Component
-const FilterDropdown: React.FC<{
-  label: string;
-  options: FilterOption[];
-  value: string;
-  onChange: (value: string) => void;
-  disabled: boolean;
-  dataValueKey?: string;
-  dataLabelKey?: string;
-}> = ({
-  label,
-  options,
-  value,
-  onChange,
-  disabled,
-  dataValueKey = "id",
-  dataLabelKey = "name",
-}) => (
-  <div className="w-full">
-    <label className="block text-sm font-medium text-gray-700 mb-1">
-      {label}
-    </label>
-    <select
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      disabled={disabled}
-      className={`mt-1 block w-full pl-3 pr-10 py-2.5 text-base border ${
-        disabled ? "bg-gray-50" : "bg-white"
-      } border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition`}
-    >
-      <option value="">All {label}s</option>
-      {options.map((option) => (
-        <option key={option[dataValueKey]} value={option[dataValueKey]}>
-          {option[dataLabelKey]}
-        </option>
-      ))}
-    </select>
-  </div>
-);
-
-// Main Component
-const ManageAttendance = () => {
-  const [history, setHistory] = useState<DetailedAttendanceRecord[]>([]);
-  const [summary, setSummary] = useState<SummaryData>({
-    totalEntries: 0,
-    totalUsers: 0,
-    totalWorkHours: "0.00",
-  });
-  const [loading, setLoading] = useState(false);
-  const [filterListsLoading, setFilterListsLoading] = useState(true);
-  const [selectedRecord, setSelectedRecord] =
-    useState<DetailedAttendanceRecord | null>(null);
-
-  const [branchFilter, setBranchFilter] = useState("");
-  const [positionFilter, setPositionFilter] = useState("");
-  const [startDate, setStartDate] = useState(
-    () =>
-      new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split("T")[0]
-  );
-  const [endDate, setEndDate] = useState(
-    () => new Date().toISOString().split("T")[0]
-  );
-
-  const [branches, setBranches] = useState<FilterOption[]>([]);
-  const [positions, setPositions] = useState<FilterOption[]>([]);
-
-  // --- FETCH DATA ---
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    const token = localStorage.getItem("token");
-    if (!token) {
-      setLoading(false);
-      console.error("Authentication token not found.");
-      return;
-    }
-
-    try {
-      const url = new URL(`${API_BASE_URL}/attendance/history/all`);
-      if (branchFilter) url.searchParams.append("branchId", branchFilter);
-      if (positionFilter) url.searchParams.append("positionId", positionFilter);
-      url.searchParams.append("startDate", startDate);
-      url.searchParams.append("endDate", endDate);
-
-      const response = await fetch(url.toString(), {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      });
-      const data = await response.json();
-
-      if (response.ok) {
-        setHistory(data.details || []);
-        setSummary(
-          data.summary || {
-            totalEntries: 0,
-            totalUsers: 0,
-            totalWorkHours: "0.00",
-          }
-        );
-      } else {
-        console.error("API Error:", data.message);
-        setHistory([]);
-        setSummary({ totalEntries: 0, totalUsers: 0, totalWorkHours: "0.00" });
-      }
-    } catch (error) {
-      console.error("Failed to fetch attendance history:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [branchFilter, positionFilter, startDate, endDate]);
-
-  // Initial load for filter options
-  useEffect(() => {
-    const loadFilters = async () => {
-      setFilterListsLoading(true);
-      const [branchList, positionList] = await Promise.all([
-        fetchFilterOptions("branches"),
-        fetchFilterOptions("positions"),
-      ]);
-      setBranches(branchList);
-      setPositions(positionList);
-      setFilterListsLoading(false);
-    };
-    loadFilters();
-  }, []);
-
-  // Initial data load and data re-load on filter change
-  useEffect(() => {
-    if (!filterListsLoading) {
-      fetchData();
-    }
-  }, [fetchData, filterListsLoading]);
-
-  return (
-    <div className="p-6 md:p-10 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
-      <h1 className="text-4xl font-extrabold text-gray-900 mb-8 pb-2">
-        Attendance Monitoring Dashboard
-      </h1>
-
-      {/* Filter Panel */}
-      <div className="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-gray-200">
-        <div className="flex items-center text-lg font-semibold text-gray-700 mb-4">
-          <Filter className="w-5 h-5 mr-2 text-indigo-500" />
-          Filter Data
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          <FilterDropdown
-            label="Branch"
-            options={branches}
-            value={branchFilter}
-            onChange={setBranchFilter}
-            disabled={filterListsLoading}
-          />
-          <FilterDropdown
-            label="Position"
-            options={positions}
-            value={positionFilter}
-            onChange={setPositionFilter}
-            disabled={filterListsLoading}
-          />
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Start Date
-            </label>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="mt-1 block w-full px-3 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              End Date
-            </label>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="mt-1 block w-full px-3 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-        <SummaryCard
-          icon={<Clock className="w-6 h-6" />}
-          title="Total Work Hours"
-          value={`${summary.totalWorkHours}h`}
-          gradient="bg-gradient-to-br from-blue-500 to-blue-600"
-        />
-        <SummaryCard
-          icon={<Users className="w-6 h-6" />}
-          title="Unique Employees"
-          value={summary.totalUsers}
-          gradient="bg-gradient-to-br from-purple-500 to-purple-600"
-        />
-        <SummaryCard
-          icon={<Calendar className="w-6 h-6" />}
-          title="Total Entries"
-          value={summary.totalEntries}
-          gradient="bg-gradient-to-br from-indigo-500 to-indigo-600"
-        />
-      </div>
-
-      {/* Detailed Table */}
-      <div className="bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-        <h2 className="text-xl font-semibold p-6 border-b bg-gradient-to-r from-gray-50 to-gray-100 text-gray-800">
-          Attendance Details
-        </h2>
-
-        <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Employee
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Date
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Check In
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Check Out
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Break In
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Break Out
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Branch / Position
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Hours
-                </th>
-                <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                  Selfie
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-12 text-indigo-600">
-                    <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-                    <p className="text-sm">Loading attendance data...</p>
-                  </td>
-                </tr>
-              ) : history.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="text-center py-12 text-gray-500">
-                    <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-yellow-500" />
-                    <p>No attendance records match the current filters.</p>
-                  </td>
-                </tr>
-              ) : (
-                history.map((record) => (
-                  <tr
-                    key={record.AttendanceId}
-                    onClick={() => setSelectedRecord(record)}
-                    className="hover:bg-indigo-50 cursor-pointer transition duration-150"
-                  >
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm font-medium text-gray-900">
-                        {record.FullName}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        Staff ID: {record.StaffId}
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {formatDate(record.WorkDate)}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span className="px-3 py-1 text-sm font-semibold text-green-800 bg-green-100 rounded-full">
-                        {formatTime(record.CheckInAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                          record.CheckOutAt
-                            ? "text-red-800 bg-red-100"
-                            : "text-gray-600 bg-gray-100"
-                        }`}
-                      >
-                        {formatTime(record.CheckOutAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                          record.BreakInAt
-                            ? "text-orange-800 bg-orange-100"
-                            : "text-gray-600 bg-gray-100"
-                        }`}
-                      >
-                        {formatTime(record.BreakInAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <span
-                        className={`px-3 py-1 text-sm font-semibold rounded-full ${
-                          record.BreakOutAt
-                            ? "text-yellow-800 bg-yellow-100"
-                            : "text-gray-600 bg-gray-100"
-                        }`}
-                      >
-                        {formatTime(record.BreakOutAt)}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-                      {record.BranchName || "N/A Branch"} /{" "}
-                      {record.PositionName || "N/A Position"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700">
-                      {record.WorkDurationHours !== null
-                        ? `${record.WorkDurationHours.toFixed(2)}`
-                        : "—"}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      {record.SelfiePhotoUrl ? (
-                        <a
-                          href={record.SelfiePhotoUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          View
-                        </a>
-                      ) : (
-                        "—"
-                      )}
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Updated Modal Call */}
-      {selectedRecord && (
-        <AttendanceDetailModal
-          record={selectedRecord}
-          allRecords={history}
-          onClose={() => setSelectedRecord(null)}
-          onRecordUpdate={fetchData} // <-- ADDED THIS PROP TO REFRESH DATA
-        />
-      )}
-    </div>
-  );
-};
-
-export default ManageAttendance;
-
-//=========================================================//
-
 // "use client";
 // import React, { useState, useEffect, useCallback, useMemo } from "react";
+// import Link from "next/link";
 // import {
 //   Loader2,
 //   Users,
@@ -1003,11 +11,17 @@ export default ManageAttendance;
 //   MapPin,
 //   Calendar,
 //   TrendingUp,
+//   Pencil,
+//   ArrowRight,
+//   BarChart,
+//   ChevronLeft,
+//   ChevronRight,
+//   AlertCircle, // Icon for Late/OT
 // } from "lucide-react";
 // import {
 //   LineChart,
 //   Line,
-//   BarChart,
+//   BarChart as ReBarChart,
 //   Bar,
 //   XAxis,
 //   YAxis,
@@ -1025,6 +39,7 @@ export default ManageAttendance;
 //   positionId?: string;
 //   startDate?: string;
 //   endDate?: string;
+//   staffId?: string; // Added staffId
 // }
 
 // interface SummaryData {
@@ -1033,6 +48,7 @@ export default ManageAttendance;
 //   totalWorkHours: string;
 // }
 
+// // UPDATED TYPE
 // interface DetailedAttendanceRecord {
 //   AttendanceId: string;
 //   WorkDate: string;
@@ -1046,419 +62,279 @@ export default ManageAttendance;
 //   PositionName: string | null;
 //   BranchName: string | null;
 //   WorkDurationHours: number | null;
+//   LateMinutes: number | null; // <-- NEW
+//   OvertimeMinutes: number | null; // <-- NEW
 // }
 
 // interface FilterOption {
-//   [key: string]: any;
+//   id: string;
+//   name: string;
+// }
+
+// interface UserSummary {
+//   id: string;
+//   name: string;
 // }
 
 // // --- UTILITY FUNCTIONS ---
-// const formatDate = (dateString: string) => {
-//   if (!dateString) return "N/A";
-//   return new Date(dateString).toLocaleDateString();
-// };
-
-// const formatTime = (timeString: string | null) => {
-//   if (!timeString) return "—";
-//   return new Date(timeString).toLocaleTimeString([], {
-//     hour: "2-digit",
-//     minute: "2-digit",
-//   });
-// };
-
-// const formatDuration = (hours: number | null) => {
-//   if (hours === null) return "—";
-//   const h = Math.floor(hours);
-//   const m = Math.floor((hours - h) * 60);
-//   return `${h}h ${m}m`;
-// };
-
-// const calculateBreakDuration = (
-//   breakIn: string | null,
-//   breakOut: string | null
-// ) => {
-//   if (!breakIn) return "—";
-//   try {
-//     const inTime = new Date(breakIn).getTime();
-//     const outTime = breakOut ? new Date(breakOut).getTime() : Date.now();
-//     const diffMs = outTime - inTime;
-//     const hours = Math.floor(diffMs / (1000 * 60 * 60));
-//     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-//     return `${hours}h ${minutes}m`;
-//   } catch {
-//     return "—";
-//   }
-// };
-
-// const fetchFilterOptions = async (endpoint: string) => {
+// const fetchApi = async (url: string, method: string = "GET", body?: any) => {
 //   const token = localStorage.getItem("token");
-//   if (!token) return [];
-
-//   try {
-//     const response = await fetch(`${API_BASE_URL}/${endpoint}`, {
-//       headers: { Authorization: `Bearer ${token}` },
-//     });
-
-//     if (response.ok) {
-//       const fullResponse = await response.json();
-//       const dataToMap = fullResponse.items || [];
-
-//       return dataToMap.map((item: any) => ({
-//         id: item.BranchId || item.PositionId || item.id,
-//         name: item.BranchName || item.PositionName || item.Name || item.name,
-//       }));
-//     } else {
-//       console.error(`API ${endpoint} failed:`, await response.text());
-//     }
-//   } catch (error) {
-//     console.error(`Failed to fetch ${endpoint}:`, error);
+//   if (!token) throw new Error("Authentication token not found.");
+//   const headers: HeadersInit = {
+//     Authorization: `Bearer ${token}`,
+//     "Content-Type": "application/json",
+//   };
+//   const response = await fetch(`${API_BASE_URL}${url}`, {
+//     method,
+//     headers,
+//     body: body ? JSON.stringify(body) : undefined,
+//   });
+//   if (!response.ok) {
+//     const errorData = await response.json();
+//     throw new Error(errorData.message || `API Error: ${response.statusText}`);
 //   }
-//   return [];
+//   return response.json();
 // };
 
-// // --- COMPONENTS ---
+// const formatDate = (date: Date) => date.toISOString().split("T")[0];
 
-// // Detailed View Modal Component
+// const formatTime = (dateTime: string | null): string => {
+//   if (!dateTime) return "—";
+//   try {
+//     return new Date(dateTime).toLocaleTimeString("en-US", {
+//       hour: "2-digit",
+//       minute: "2-digit",
+//       hour12: true,
+//     });
+//   } catch (e) {
+//     return "Invalid Time";
+//   }
+// };
+
+// const formatHoursDecimal = (hours: number | null): string => {
+//   // Renamed original formatHours
+//   if (hours === null || typeof hours === "undefined") return "—";
+//   return hours.toFixed(2);
+// };
+
+// // NEW: Helper to format minutes to "Hh Mm"
+// const minutesToHoursMinutes = (minutes: number | null | undefined): string => {
+//   if (
+//     minutes === null ||
+//     typeof minutes === "undefined" ||
+//     isNaN(minutes) ||
+//     minutes <= 0
+//   ) {
+//     return ""; // Return empty string if no minutes or invalid
+//   }
+//   const h = Math.floor(minutes / 60);
+//   const m = Math.round(minutes % 60);
+//   let result = "";
+//   if (h > 0) result += `${h}h `;
+//   if (m > 0) result += `${m}m`;
+//   return result.trim(); // Trim potential trailing space
+// };
+
+// // --- RE-CREATED CHILD COMPONENTS ---
+
+// // Summary Card Component
+// const SummaryCard: React.FC<{
+//   title: string;
+//   value: string | number;
+//   icon: React.ElementType;
+// }> = ({ title, value, icon: Icon }) => (
+//   <div className="flex-1 p-5 bg-white rounded-xl shadow-lg border border-gray-200 flex items-center gap-4">
+//     <div className="p-3 rounded-full bg-indigo-100 text-indigo-600">
+//       <Icon className="w-6 h-6" />
+//     </div>
+//     <div>
+//       <p className="text-sm font-medium text-gray-500">{title}</p>
+//       <p className="text-2xl font-bold text-gray-900">{value}</p>
+//     </div>
+//   </div>
+// );
+
+// // UPDATED Attendance Detail Modal Component
 // const AttendanceDetailModal: React.FC<{
 //   record: DetailedAttendanceRecord;
 //   allRecords: DetailedAttendanceRecord[];
 //   onClose: () => void;
 // }> = ({ record, allRecords, onClose }) => {
-//   // Generate chart data for the last 7 days for this specific staff
-//   const chartData = useMemo(() => {
-//     const staffRecords = allRecords
-//       .filter((r) => r.StaffId === record.StaffId)
-//       .sort(
-//         (a, b) =>
-//           new Date(a.WorkDate).getTime() - new Date(b.WorkDate).getTime()
-//       )
-//       .slice(-7);
+//   const [currentIndex, setCurrentIndex] = useState(() =>
+//     allRecords.findIndex((r) => r.AttendanceId === record.AttendanceId)
+//   );
 
-//     return staffRecords.map((r) => ({
-//       date: new Date(r.WorkDate).toLocaleDateString("en-US", {
-//         month: "short",
-//         day: "numeric",
-//       }),
-//       hours: r.WorkDurationHours || 0,
-//       checkIn: r.CheckInAt
-//         ? new Date(r.CheckInAt).getHours() +
-//           new Date(r.CheckInAt).getMinutes() / 60
-//         : 0,
-//     }));
-//   }, [record.StaffId, allRecords]);
+//   const currentRecord = allRecords[currentIndex] || record;
 
-//   // Calculate statistics
-//   const stats = useMemo(() => {
-//     const staffRecords = allRecords.filter((r) => r.StaffId === record.StaffId);
-//     const totalHours = staffRecords.reduce(
-//       (sum, r) => sum + (r.WorkDurationHours || 0),
-//       0
-//     );
-//     const avgHours =
-//       staffRecords.length > 0 ? totalHours / staffRecords.length : 0;
-//     const completedShifts = staffRecords.filter(
-//       (r) => r.CheckOutAt !== null
-//     ).length;
+//   const navigate = (direction: "next" | "prev") => {
+//     if (direction === "next" && currentIndex < allRecords.length - 1) {
+//       setCurrentIndex(currentIndex + 1);
+//     } else if (direction === "prev" && currentIndex > 0) {
+//       setCurrentIndex(currentIndex - 1);
+//     }
+//   };
 
-//     return {
-//       totalHours: totalHours.toFixed(2),
-//       avgHours: avgHours.toFixed(2),
-//       totalDays: staffRecords.length,
-//       completedShifts,
-//     };
-//   }, [record.StaffId, allRecords]);
+//   const DetailRow: React.FC<{
+//     label: string;
+//     value: React.ReactNode; // Allow JSX for value
+//     color?: string;
+//   }> = ({ label, value, color = "text-gray-900" }) => (
+//     <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 items-center">
+//       <dt className="text-sm font-medium text-gray-500">{label}</dt>
+//       <dd
+//         className={`mt-1 text-sm sm:mt-0 sm:col-span-2 font-semibold ${color}`}
+//       >
+//         {value}
+//       </dd>
+//     </div>
+//   );
+
+//   // Format Late/OT status for the modal
+//   const lateStatus =
+//     currentRecord.LateMinutes && currentRecord.LateMinutes > 0
+//       ? `${currentRecord.LateMinutes}m Late`
+//       : null;
+//   const overtimeStatus =
+//     currentRecord.OvertimeMinutes && currentRecord.OvertimeMinutes > 0
+//       ? `${minutesToHoursMinutes(currentRecord.OvertimeMinutes)} OT`
+//       : null;
 
 //   return (
-//     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-//       <div className="bg-white rounded-2xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-//         {/* Header */}
-//         <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white p-6 rounded-t-2xl relative">
+//     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50">
+//       <div className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+//         {/* Modal Header */}
+//         <div className="flex items-center justify-between p-5 border-b bg-gray-50">
+//           <div>
+//             <h2 className="text-xl font-bold text-gray-900">
+//               {currentRecord.FullName}
+//             </h2>
+//             <p className="text-sm text-gray-600">
+//               {formatDate(new Date(currentRecord.WorkDate))}
+//             </p>
+//             {/* Display Late/OT in header */}
+//             <div className="flex items-center gap-2 mt-1">
+//               {lateStatus && (
+//                 <span className="px-2 py-0.5 text-xs font-medium text-orange-800 bg-orange-100 rounded-full flex items-center gap-1">
+//                   <AlertCircle className="w-3 h-3" /> {lateStatus}
+//                 </span>
+//               )}
+//               {overtimeStatus && (
+//                 <span className="px-2 py-0.5 text-xs font-medium text-purple-800 bg-purple-100 rounded-full flex items-center gap-1">
+//                   <Clock className="w-3 h-3" /> {overtimeStatus}
+//                 </span>
+//               )}
+//             </div>
+//           </div>
 //           <button
 //             onClick={onClose}
-//             className="absolute top-4 right-4 p-2 hover:bg-white hover:bg-opacity-20 rounded-full transition"
+//             className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition"
 //           >
 //             <X className="w-5 h-5" />
 //           </button>
-//           <h2 className="text-2xl font-bold mb-2">Attendance Details</h2>
-//           <p className="text-indigo-100 text-lg">{record.FullName}</p>
-//           <p className="text-indigo-200 text-sm">Staff ID: {record.StaffId}</p>
-//           <p className="text-indigo-200 text-sm">
-//             {formatDate(record.WorkDate)}
-//           </p>
 //         </div>
 
-//         <div className="p-6 space-y-6">
-//           {/* Time Details Card */}
-//           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-//             <div className="bg-gradient-to-br from-green-50 to-green-100 p-5 rounded-xl border border-green-200">
-//               <div className="flex items-center mb-3">
-//                 <div className="p-2 bg-green-500 rounded-lg mr-3">
-//                   <Clock className="w-5 h-5 text-white" />
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-green-600 font-medium">Check In</p>
-//                   <p className="text-2xl font-bold text-green-800">
-//                     {formatTime(record.CheckInAt)}
-//                   </p>
-//                 </div>
-//               </div>
-//               <p className="text-xs text-green-600">
-//                 {record.CheckInAt
-//                   ? new Date(record.CheckInAt).toLocaleDateString()
-//                   : "N/A"}
-//               </p>
-//             </div>
-
-//             <div className="bg-gradient-to-br from-red-50 to-red-100 p-5 rounded-xl border border-red-200">
-//               <div className="flex items-center mb-3">
-//                 <div className="p-2 bg-red-500 rounded-lg mr-3">
-//                   <Clock className="w-5 h-5 text-white" />
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-red-600 font-medium">Check Out</p>
-//                   <p className="text-2xl font-bold text-red-800">
-//                     {record.CheckOutAt
-//                       ? formatTime(record.CheckOutAt)
-//                       : "Not yet"}
-//                   </p>
-//                 </div>
-//               </div>
-//               <p className="text-xs text-red-600">
-//                 {record.CheckOutAt
-//                   ? new Date(record.CheckOutAt).toLocaleDateString()
-//                   : "Still working"}
-//               </p>
-//             </div>
-
-//             <div className="bg-gradient-to-br from-orange-50 to-orange-100 p-5 rounded-xl border border-orange-200">
-//               <div className="flex items-center mb-3">
-//                 <div className="p-2 bg-orange-500 rounded-lg mr-3">
-//                   <Clock className="w-5 h-5 text-white" />
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-orange-600 font-medium">
-//                     Break In
-//                   </p>
-//                   <p className="text-2xl font-bold text-orange-800">
-//                     {formatTime(record.BreakInAt)}
-//                   </p>
-//                 </div>
-//               </div>
-//               <p className="text-xs text-orange-600">
-//                 {record.BreakInAt
-//                   ? new Date(record.BreakInAt).toLocaleDateString()
-//                   : "No break taken"}
-//               </p>
-//             </div>
-
-//             <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-5 rounded-xl border border-yellow-200">
-//               <div className="flex items-center mb-3">
-//                 <div className="p-2 bg-yellow-500 rounded-lg mr-3">
-//                   <Clock className="w-5 h-5 text-white" />
-//                 </div>
-//                 <div>
-//                   <p className="text-sm text-yellow-600 font-medium">
-//                     Break Out
-//                   </p>
-//                   <p className="text-2xl font-bold text-yellow-800">
-//                     {formatTime(record.BreakOutAt)}
-//                   </p>
-//                 </div>
-//               </div>
-//               <p className="text-xs text-yellow-600">
-//                 {record.BreakOutAt
-//                   ? new Date(record.BreakOutAt).toLocaleDateString()
-//                   : "Break ongoing"}
-//               </p>
-//             </div>
-//           </div>
-
-//           {/* Duration & Branch/Position */}
-//           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-//             <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 p-5 rounded-xl border border-indigo-200">
-//               <p className="text-sm text-indigo-600 font-medium mb-2">
-//                 Work Duration
-//               </p>
-//               <p className="text-3xl font-bold text-indigo-800">
-//                 {formatDuration(record.WorkDurationHours)}
-//               </p>
-//               <p className="text-xs text-indigo-600 mt-2">
-//                 {record.WorkDurationHours !== null
-//                   ? `${record.WorkDurationHours.toFixed(2)} hours`
-//                   : "In progress"}
-//               </p>
-//             </div>
-
-//             <div className="bg-gradient-to-br from-purple-50 to-purple-100 p-5 rounded-xl border border-purple-200">
-//               <p className="text-sm text-purple-600 font-medium mb-2">
-//                 Break Duration
-//               </p>
-//               <p className="text-3xl font-bold text-purple-800">
-//                 {calculateBreakDuration(record.BreakInAt, record.BreakOutAt)}
-//               </p>
-//               <p className="text-xs text-purple-600 mt-2">Total break time</p>
-//             </div>
-
-//             <div className="bg-gradient-to-br from-pink-50 to-pink-100 p-5 rounded-xl border border-pink-200">
-//               <div className="flex items-center mb-2">
-//                 <MapPin className="w-4 h-4 text-pink-600 mr-2" />
-//                 <p className="text-sm text-pink-600 font-medium">
-//                   Branch & Position
-//                 </p>
-//               </div>
-//               <p className="text-sm font-semibold text-pink-800 mb-1">
-//                 {record.BranchName || "N/A Branch"}
-//               </p>
-//               <p className="text-sm text-pink-700">
-//                 {record.PositionName || "N/A Position"}
-//               </p>
-//             </div>
-//           </div>
-
-//           {/* Statistics Cards */}
-//           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-//             <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
-//               <p className="text-xs text-blue-600 mb-1">Total Days</p>
-//               <p className="text-2xl font-bold text-blue-800">
-//                 {stats.totalDays}
-//               </p>
-//             </div>
-//             <div className="bg-green-50 p-4 rounded-lg border border-green-200">
-//               <p className="text-xs text-green-600 mb-1">Completed</p>
-//               <p className="text-2xl font-bold text-green-800">
-//                 {stats.completedShifts}
-//               </p>
-//             </div>
-//             <div className="bg-purple-50 p-4 rounded-lg border border-purple-200">
-//               <p className="text-xs text-purple-600 mb-1">Total Hours</p>
-//               <p className="text-2xl font-bold text-purple-800">
-//                 {stats.totalHours}h
-//               </p>
-//             </div>
-//             <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
-//               <p className="text-xs text-orange-600 mb-1">Avg Hours</p>
-//               <p className="text-2xl font-bold text-orange-800">
-//                 {stats.avgHours}h
-//               </p>
-//             </div>
-//           </div>
-
-//           {/* Work Hours Chart */}
-//           {chartData.length > 0 && (
-//             <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-//               <div className="flex items-center mb-4">
-//                 <TrendingUp className="w-5 h-5 text-indigo-600 mr-2" />
-//                 <h3 className="text-lg font-semibold text-gray-800">
-//                   Last 7 Days Work Hours
-//                 </h3>
-//               </div>
-//               <ResponsiveContainer width="100%" height={250}>
-//                 <BarChart data={chartData}>
-//                   <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-//                   <XAxis
-//                     dataKey="date"
-//                     stroke="#666"
-//                     style={{ fontSize: "12px" }}
-//                   />
-//                   <YAxis stroke="#666" style={{ fontSize: "12px" }} />
-//                   <Tooltip
-//                     contentStyle={{
-//                       backgroundColor: "#fff",
-//                       border: "1px solid #ddd",
-//                       borderRadius: "8px",
-//                     }}
-//                     formatter={(value: any) => [
-//                       `${value.toFixed(2)} hours`,
-//                       "Work Duration",
-//                     ]}
-//                   />
-//                   <Bar dataKey="hours" fill="#6366f1" radius={[8, 8, 0, 0]} />
-//                 </BarChart>
-//               </ResponsiveContainer>
-//             </div>
-//           )}
-
-//           {/* Check-In Time Trend */}
-//           {chartData.length > 0 && (
-//             <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-//               <div className="flex items-center mb-4">
-//                 <Calendar className="w-5 h-5 text-purple-600 mr-2" />
-//                 <h3 className="text-lg font-semibold text-gray-800">
-//                   Check-In Time Pattern
-//                 </h3>
-//               </div>
-//               <ResponsiveContainer width="100%" height={200}>
-//                 <LineChart data={chartData}>
-//                   <CartesianGrid strokeDasharray="3 3" stroke="#e0e0e0" />
-//                   <XAxis
-//                     dataKey="date"
-//                     stroke="#666"
-//                     style={{ fontSize: "12px" }}
-//                   />
-//                   <YAxis
-//                     domain={[0, 24]}
-//                     stroke="#666"
-//                     style={{ fontSize: "12px" }}
-//                   />
-//                   <Tooltip
-//                     contentStyle={{
-//                       backgroundColor: "#fff",
-//                       border: "1px solid #ddd",
-//                       borderRadius: "8px",
-//                     }}
-//                     formatter={(value: any) => {
-//                       const hours = Math.floor(value);
-//                       const minutes = Math.round((value - hours) * 60);
-//                       return [
-//                         `${hours}:${minutes.toString().padStart(2, "0")}`,
-//                         "Check-In Time",
-//                       ];
-//                     }}
-//                   />
-//                   <Line
-//                     type="monotone"
-//                     dataKey="checkIn"
-//                     stroke="#8b5cf6"
-//                     strokeWidth={2}
-//                     dot={{ fill: "#8b5cf6", r: 4 }}
-//                   />
-//                 </LineChart>
-//               </ResponsiveContainer>
-//             </div>
-//           )}
-
-//           {/* Selfie Photo */}
-//           {record.SelfiePhotoUrl && (
-//             <div className="bg-gray-50 p-5 rounded-xl border border-gray-200">
-//               <h3 className="text-lg font-semibold text-gray-800 mb-3">
-//                 Check-In Selfie
-//               </h3>
-//               <div className="flex justify-center">
+//         {/* Modal Content */}
+//         <div className="p-6 overflow-y-auto">
+//           <div className="flex flex-col md:flex-row gap-6">
+//             {/* Selfie */}
+//             <div className="flex-shrink-0 w-full md:w-48 h-48 bg-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+//               {currentRecord.SelfiePhotoUrl ? (
 //                 <img
-//                   src={record.SelfiePhotoUrl}
-//                   alt="Check-in selfie"
-//                   className="max-w-full max-h-64 rounded-lg shadow-lg"
+//                   src={currentRecord.SelfiePhotoUrl}
+//                   alt="Selfie"
+//                   className="w-full h-full object-cover"
 //                 />
-//               </div>
-//               <a
-//                 href={record.SelfiePhotoUrl}
-//                 target="_blank"
-//                 rel="noopener noreferrer"
-//                 className="block text-center mt-3 text-indigo-600 hover:text-indigo-800 font-medium"
-//               >
-//                 View Full Size
-//               </a>
+//               ) : (
+//                 <span className="text-gray-500">No Selfie</span>
+//               )}
 //             </div>
-//           )}
+
+//             {/* Details */}
+//             <div className="flex-1">
+//               <dl className="divide-y divide-gray-200">
+//                 <DetailRow label="Staff ID" value={currentRecord.StaffId} />
+//                 <DetailRow
+//                   label="Branch"
+//                   value={currentRecord.BranchName || "N/A"}
+//                 />
+//                 <DetailRow
+//                   label="Position"
+//                   value={currentRecord.PositionName || "N/A"}
+//                 />
+//                 <DetailRow
+//                   label="Total Hours"
+//                   value={`${formatHoursDecimal(
+//                     currentRecord.WorkDurationHours
+//                   )} hrs`}
+//                   color="text-indigo-600"
+//                 />
+//                 {/* NEW Rows for Late/OT */}
+//                 {currentRecord.LateMinutes && currentRecord.LateMinutes > 0 && (
+//                   <DetailRow
+//                     label="Late By"
+//                     value={`${currentRecord.LateMinutes} min`}
+//                     color="text-orange-600"
+//                   />
+//                 )}
+//                 {currentRecord.OvertimeMinutes &&
+//                   currentRecord.OvertimeMinutes > 0 && (
+//                     <DetailRow
+//                       label="Overtime"
+//                       value={minutesToHoursMinutes(
+//                         currentRecord.OvertimeMinutes
+//                       )}
+//                       color="text-purple-600"
+//                     />
+//                   )}
+//               </dl>
+//             </div>
+//           </div>
+
+//           {/* Timings */}
+//           <div className="mt-6">
+//             <h3 className="text-lg font-medium text-gray-900 mb-2">
+//               Timestamps
+//             </h3>
+//             <dl className="divide-y divide-gray-200 border bg-gray-50/50 rounded-lg">
+//               <DetailRow
+//                 label="Check In"
+//                 value={formatTime(currentRecord.CheckInAt)}
+//                 color="text-green-600"
+//               />
+//               <DetailRow
+//                 label="Break In"
+//                 value={formatTime(currentRecord.BreakInAt)}
+//               />
+//               <DetailRow
+//                 label="Break Out"
+//                 value={formatTime(currentRecord.BreakOutAt)}
+//               />
+//               <DetailRow
+//                 label="Check Out"
+//                 value={formatTime(currentRecord.CheckOutAt)}
+//                 color="text-red-600"
+//               />
+//             </dl>
+//           </div>
 //         </div>
 
-//         {/* Footer */}
-//         <div className="bg-gray-50 p-4 rounded-b-2xl border-t flex justify-end">
+//         {/* Modal Footer (Navigation) */}
+//         <div className="flex items-center justify-between p-4 border-t bg-gray-50">
 //           <button
-//             onClick={onClose}
-//             className="px-6 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium"
+//             onClick={() => navigate("prev")}
+//             disabled={currentIndex === 0}
+//             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50"
 //           >
-//             Close
+//             <ChevronLeft className="w-4 h-4" />
+//             Previous
+//           </button>
+//           <button
+//             onClick={() => navigate("next")}
+//             disabled={currentIndex === allRecords.length - 1}
+//             className="flex items-center gap-2 px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-100 disabled:opacity-50"
+//           >
+//             Next
+//             <ChevronRight className="w-4 h-4" />
 //           </button>
 //         </div>
 //       </div>
@@ -1466,241 +342,291 @@ export default ManageAttendance;
 //   );
 // };
 
-// // Summary Card Component
-// const SummaryCard: React.FC<{
-//   icon: React.ReactNode;
-//   title: string;
-//   value: string | number;
-//   gradient: string;
-// }> = ({ icon, title, value, gradient }) => (
-//   <div
-//     className={`flex items-center p-6 rounded-xl shadow-lg border ${gradient}`}
-//   >
-//     <div className="p-3 bg-white bg-opacity-30 rounded-full mr-4">{icon}</div>
-//     <div>
-//       <p className="text-sm font-medium text-white text-opacity-90">{title}</p>
-//       <p className="text-3xl font-bold text-white">{value}</p>
-//     </div>
-//   </div>
-// );
-
-// // Filter Dropdown Component
-// const FilterDropdown: React.FC<{
-//   label: string;
-//   options: FilterOption[];
-//   value: string;
-//   onChange: (value: string) => void;
-//   disabled: boolean;
-//   dataValueKey?: string;
-//   dataLabelKey?: string;
-// }> = ({
-//   label,
-//   options,
-//   value,
-//   onChange,
-//   disabled,
-//   dataValueKey = "id",
-//   dataLabelKey = "name",
-// }) => (
-//   <div className="w-full">
-//     <label className="block text-sm font-medium text-gray-700 mb-1">
-//       {label}
-//     </label>
-//     <select
-//       value={value}
-//       onChange={(e) => onChange(e.target.value)}
-//       disabled={disabled}
-//       className={`mt-1 block w-full pl-3 pr-10 py-2.5 text-base border ${
-//         disabled ? "bg-gray-50" : "bg-white"
-//       } border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition`}
-//     >
-//       <option value="">All {label}s</option>
-//       {options.map((option) => (
-//         <option key={option[dataValueKey]} value={option[dataValueKey]}>
-//           {option[dataLabelKey]}
-//         </option>
-//       ))}
-//     </select>
-//   </div>
-// );
-
-// // Main Component
+// // --- MAIN COMPONENT ---
 // const ManageAttendance = () => {
 //   const [history, setHistory] = useState<DetailedAttendanceRecord[]>([]);
-//   const [summary, setSummary] = useState<SummaryData>({
-//     totalEntries: 0,
-//     totalUsers: 0,
-//     totalWorkHours: "0.00",
-//   });
-//   const [loading, setLoading] = useState(false);
-//   const [filterListsLoading, setFilterListsLoading] = useState(true);
-//   const [selectedRecord, setSelectedRecord] =
-//     useState<DetailedAttendanceRecord | null>(null);
-
-//   const [branchFilter, setBranchFilter] = useState("");
-//   const [positionFilter, setPositionFilter] = useState("");
-//   const [startDate, setStartDate] = useState(
-//     () =>
-//       new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-//         .toISOString()
-//         .split("T")[0]
-//   );
-//   const [endDate, setEndDate] = useState(
-//     () => new Date().toISOString().split("T")[0]
-//   );
-
+//   const [summary, setSummary] = useState<SummaryData | null>(null);
 //   const [branches, setBranches] = useState<FilterOption[]>([]);
 //   const [positions, setPositions] = useState<FilterOption[]>([]);
 
-//   // --- FETCH DATA ---
-//   const fetchData = useCallback(async () => {
-//     setLoading(true);
-//     const token = localStorage.getItem("token");
-//     if (!token) {
-//       setLoading(false);
-//       console.error("Authentication token not found.");
-//       return;
-//     }
+//   const [filters, setFilters] = useState({
+//     branchId: "All Branches",
+//     positionId: "All Positions",
+//     startDate: formatDate(
+//       new Date(new Date().setDate(new Date().getDate() - 7))
+//     ),
+//     endDate: formatDate(new Date()),
+//     staffId: "",
+//   });
 
+//   const [isLoading, setIsLoading] = useState(false);
+//   const [isFilterLoading, setIsFilterLoading] = useState(false);
+//   const [error, setError] = useState<string | null>(null);
+//   const [selectedRecord, setSelectedRecord] =
+//     useState<DetailedAttendanceRecord | null>(null);
+
+//   const [userList, setUserList] = useState<UserSummary[]>([]);
+//   const [isUserListLoading, setIsUserListLoading] = useState(false);
+
+//   // --- Fetch Filter Options ---
+//   const fetchFilterOptions = useCallback(async (endpoint: string) => {
 //     try {
-//       const url = new URL(`${API_BASE_URL}/attendance/history/all`);
-//       if (branchFilter) url.searchParams.append("branchId", branchFilter);
-//       if (positionFilter) url.searchParams.append("positionId", positionFilter);
-//       url.searchParams.append("startDate", startDate);
-//       url.searchParams.append("endDate", endDate);
-
-//       const response = await fetch(url.toString(), {
-//         headers: {
-//           Authorization: `Bearer ${token}`,
-//           "Content-Type": "application/json",
-//         },
-//       });
-//       const data = await response.json();
-
-//       if (response.ok) {
-//         setHistory(data.details || []);
-//         setSummary(
-//           data.summary || {
-//             totalEntries: 0,
-//             totalUsers: 0,
-//             totalWorkHours: "0.00",
-//           }
-//         );
-//       } else {
-//         console.error("API Error:", data.message);
-//         setHistory([]);
-//         setSummary({ totalEntries: 0, totalUsers: 0, totalWorkHours: "0.00" });
-//       }
+//       const fullResponse = await fetchApi(`/${endpoint}`);
+//       const dataToMap = fullResponse.items || [];
+//       return dataToMap.map((item: any) => ({
+//         id: item.BranchId || item.PositionId || item.id,
+//         name: item.BranchName || item.Name || item.name,
+//       }));
 //     } catch (error) {
-//       console.error("Failed to fetch attendance history:", error);
-//     } finally {
-//       setLoading(false);
+//       console.error(`Failed to fetch /${endpoint}:`, error);
+//       return [];
 //     }
-//   }, [branchFilter, positionFilter, startDate, endDate]);
+//   }, []);
 
-//   // Initial load for filter options
 //   useEffect(() => {
 //     const loadFilters = async () => {
-//       setFilterListsLoading(true);
+//       setIsFilterLoading(true);
 //       const [branchList, positionList] = await Promise.all([
 //         fetchFilterOptions("branches"),
 //         fetchFilterOptions("positions"),
 //       ]);
 //       setBranches(branchList);
 //       setPositions(positionList);
-//       setFilterListsLoading(false);
+//       setIsFilterLoading(false);
 //     };
 //     loadFilters();
-//   }, []);
+//   }, [fetchFilterOptions]);
 
-//   // Initial data load and data re-load on filter change
-//   useEffect(() => {
-//     if (!filterListsLoading) {
-//       fetchData();
+//   // --- Fetch User List ---
+//   const loadUsers = useCallback(async () => {
+//     setIsUserListLoading(true);
+//     try {
+//       const params = new URLSearchParams();
+//       if (filters.branchId !== "All Branches")
+//         params.append("branchId", filters.branchId);
+//       if (filters.positionId !== "All Positions")
+//         params.append("positionId", filters.positionId);
+//       if (filters.staffId) params.append("staffId", filters.staffId);
+
+//       const queryString = params.toString();
+//       const data = await fetchApi(
+//         `/users/minimal${queryString ? `?${queryString}` : ""}`
+//       );
+//       setUserList(data.items || []);
+//     } catch (err: any) {
+//       console.error("Failed to fetch user list:", err);
+//       setUserList([]);
+//     } finally {
+//       setIsUserListLoading(false);
 //     }
-//   }, [fetchData, filterListsLoading]);
+//   }, [filters.branchId, filters.positionId, filters.staffId]);
+
+//   // --- Fetch Main Attendance Data ---
+//   const fetchData = useCallback(async () => {
+//     setIsLoading(true);
+//     setError(null);
+//     try {
+//       const params = new URLSearchParams({
+//         startDate: filters.startDate,
+//         endDate: filters.endDate,
+//       });
+//       if (filters.branchId !== "All Branches")
+//         params.append("branchId", filters.branchId);
+//       if (filters.positionId !== "All Positions")
+//         params.append("positionId", filters.positionId);
+//       if (filters.staffId) params.append("staffId", filters.staffId);
+
+//       const data = await fetchApi(`/attendance/history?${params.toString()}`);
+//       // Use 'details' key based on controller response structure
+//       setHistory(data.details || []);
+//       setSummary(data.summary || null);
+//     } catch (err: any) {
+//       setError(err.message || "Failed to fetch attendance data.");
+//       setHistory([]);
+//       setSummary(null);
+//     } finally {
+//       setIsLoading(false);
+//     }
+//   }, [filters]);
+
+//   useEffect(() => {
+//     if (!isFilterLoading) {
+//       fetchData();
+//       loadUsers();
+//     }
+//   }, [fetchData, loadUsers, isFilterLoading]);
+
+//   // --- Handlers ---
+//   const handleFilterChange = (
+//     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+//   ) => {
+//     const { name, value } = e.target;
+//     setFilters((prev) => ({ ...prev, [name]: value }));
+//   };
+
+//   const handleResetFilters = () => {
+//     setFilters({
+//       branchId: "All Branches",
+//       positionId: "All Positions",
+//       startDate: formatDate(
+//         new Date(new Date().setDate(new Date().getDate() - 7))
+//       ),
+//       endDate: formatDate(new Date()),
+//       staffId: "",
+//     });
+//   };
+
+//   const handleRowClick = (record: DetailedAttendanceRecord) => {
+//     setSelectedRecord(record);
+//   };
+
+//   // --- Filter Components ---
+//   const FilterDropdown: React.FC<{
+//     label: string;
+//     name: "branchId" | "positionId";
+//     options: FilterOption[];
+//   }> = ({ label, name, options }) => (
+//     <div className="flex-1 min-w-[150px]">
+//       <label className="text-xs font-semibold text-gray-600 mb-1 block">
+//         {label}
+//       </label>
+//       <select
+//         name={name}
+//         value={filters[name]}
+//         onChange={handleFilterChange}
+//         className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+//         disabled={isFilterLoading || isLoading}
+//       >
+//         <option value={`All ${label.split(" ")[2] || label}s`}>
+//           All {label.split(" ")[2] || label}s
+//         </option>
+//         {options.map((option) => (
+//           <option key={option.id} value={option.id}>
+//             {option.name}
+//           </option>
+//         ))}
+//       </select>
+//     </div>
+//   );
+
+//   const DatePicker: React.FC<{
+//     label: string;
+//     name: "startDate" | "endDate";
+//   }> = ({ label, name }) => (
+//     <div className="flex-1 min-w-[150px]">
+//       <label className="text-xs font-semibold text-gray-600 mb-1 block">
+//         {label}
+//       </label>
+//       <input
+//         type="date"
+//         name={name}
+//         value={filters[name]}
+//         onChange={handleFilterChange}
+//         className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+//         disabled={isLoading}
+//       />
+//     </div>
+//   );
 
 //   return (
 //     <div className="p-6 md:p-10 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
 //       <h1 className="text-4xl font-extrabold text-gray-900 mb-8 pb-2">
-//         Attendance Monitoring Dashboard
+//         <Clock className="inline w-8 h-8 mr-3 text-purple-600" />
+//         Attendance Monitoring
 //       </h1>
 
-//       {/* Filter Panel */}
-//       <div className="bg-white p-6 rounded-2xl shadow-lg mb-8 border border-gray-200">
-//         <div className="flex items-center text-lg font-semibold text-gray-700 mb-4">
+//       {/* --- Filter UI --- */}
+//       <div className="bg-white p-5 rounded-2xl shadow-lg mb-8 border border-gray-200">
+//         <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
 //           <Filter className="w-5 h-5 mr-2 text-indigo-500" />
 //           Filter Data
-//         </div>
-
-//         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+//           {isFilterLoading && (
+//             <Loader2 className="w-4 h-4 ml-3 animate-spin text-indigo-500" />
+//           )}
+//         </h3>
+//         <div className="flex flex-col md:flex-row gap-4 items-end">
 //           <FilterDropdown
-//             label="Branch"
+//             label="Filter by Branch"
+//             name="branchId"
 //             options={branches}
-//             value={branchFilter}
-//             onChange={setBranchFilter}
-//             disabled={filterListsLoading}
 //           />
 //           <FilterDropdown
-//             label="Position"
+//             label="Filter by Position"
+//             name="positionId"
 //             options={positions}
-//             value={positionFilter}
-//             onChange={setPositionFilter}
-//             disabled={filterListsLoading}
 //           />
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">
-//               Start Date
+//           <DatePicker label="Start Date" name="startDate" />
+//           <DatePicker label="End Date" name="endDate" />
+
+//           <div className="flex-1 min-w-[150px]">
+//             <label className="text-xs font-semibold text-gray-600 mb-1 block">
+//               Filter by Staff ID
 //             </label>
 //             <input
-//               type="date"
-//               value={startDate}
-//               onChange={(e) => setStartDate(e.target.value)}
-//               className="mt-1 block w-full px-3 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition"
+//               type="text"
+//               name="staffId"
+//               value={filters.staffId}
+//               onChange={handleFilterChange}
+//               placeholder="Enter Staff ID..."
+//               className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+//               disabled={isLoading || isFilterLoading}
 //             />
 //           </div>
-//           <div>
-//             <label className="block text-sm font-medium text-gray-700 mb-1">
-//               End Date
-//             </label>
-//             <input
-//               type="date"
-//               value={endDate}
-//               onChange={(e) => setEndDate(e.target.value)}
-//               className="mt-1 block w-full px-3 py-2.5 text-base border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm transition"
-//             />
-//           </div>
+//           <button
+//             onClick={handleResetFilters}
+//             className="px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-medium w-full md:w-auto"
+//             disabled={isLoading}
+//           >
+//             Reset
+//           </button>
 //         </div>
 //       </div>
 
-//       {/* Summary Cards */}
-//       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 mb-10">
-//         <SummaryCard
-//           icon={<Clock className="w-6 h-6" />}
-//           title="Total Work Hours"
-//           value={`${summary.totalWorkHours}h`}
-//           gradient="bg-gradient-to-br from-blue-500 to-blue-600"
-//         />
-//         <SummaryCard
-//           icon={<Users className="w-6 h-6" />}
-//           title="Unique Employees"
-//           value={summary.totalUsers}
-//           gradient="bg-gradient-to-br from-purple-500 to-purple-600"
-//         />
-//         <SummaryCard
-//           icon={<Calendar className="w-6 h-6" />}
-//           title="Total Entries"
-//           value={summary.totalEntries}
-//           gradient="bg-gradient-to-br from-indigo-500 to-indigo-600"
-//         />
+//       {/* === EMPLOYEE REPORTS SECTION === */}
+//       <div className="bg-white p-5 rounded-2xl shadow-lg mb-8 border border-gray-200">
+//         <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+//           <BarChart className="w-5 h-5 mr-2 text-indigo-500" />
+//           Employee Reports
+//           {isUserListLoading && (
+//             <Loader2 className="w-4 h-4 ml-3 animate-spin text-indigo-500" />
+//           )}
+//         </h3>
+//         <div className="max-h-60 overflow-y-auto pr-2">
+//           {isUserListLoading ? (
+//             <div className="text-center py-4 text-gray-500">
+//               Loading users...
+//             </div>
+//           ) : userList.length === 0 ? (
+//             <div className="text-center py-4 text-gray-500">
+//               No users found matching filters.
+//             </div>
+//           ) : (
+//             <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+//               {userList.map((user) => (
+//                 <li key={user.id}>
+//                   <Link
+//                     href={`/attendance-report/${user.id}`}
+//                     target="_blank"
+//                     className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition group"
+//                   >
+//                     <span className="text-sm font-medium text-gray-800 group-hover:text-indigo-700">
+//                       {user.name}
+//                     </span>
+//                     <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-indigo-600 transition" />
+//                   </Link>
+//                 </li>
+//               ))}
+//             </ul>
+//           )}
+//         </div>
 //       </div>
 
-//       {/* Detailed Table */}
+//       {/* --- Attendance Details Table --- */}
 //       <div className="bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-//         <h2 className="text-xl font-semibold p-6 border-b bg-gradient-to-r from-gray-50 to-gray-100 text-gray-800">
+//         <h2 className="text-xl font-semibold p-6 border-b text-gray-800 flex items-center">
+//           <Users className="w-5 h-5 mr-2 text-indigo-500" />
 //           Attendance Details
 //         </h2>
-
 //         <div className="overflow-x-auto">
 //           <table className="min-w-full divide-y divide-gray-200">
 //             <thead className="bg-gray-50">
@@ -1718,16 +644,14 @@ export default ManageAttendance;
 //                   Check Out
 //                 </th>
 //                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Break In
+//                   Hours
 //                 </th>
+//                 {/* NEW COLUMN */}
 //                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Break Out
+//                   Status / Notes
 //                 </th>
 //                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
 //                   Branch / Position
-//                 </th>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Hours
 //                 </th>
 //                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
 //                   Selfie
@@ -1735,84 +659,83 @@ export default ManageAttendance;
 //               </tr>
 //             </thead>
 //             <tbody className="bg-white divide-y divide-gray-200">
-//               {loading ? (
+//               {isLoading ? (
 //                 <tr>
-//                   <td colSpan={9} className="text-center py-12 text-indigo-600">
+//                   <td colSpan={8} className="text-center py-12 text-indigo-600">
 //                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
 //                     <p className="text-sm">Loading attendance data...</p>
 //                   </td>
 //                 </tr>
+//               ) : error ? (
+//                 <tr>
+//                   <td colSpan={8} className="text-center py-12 text-gray-500">
+//                     <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-red-500" />
+//                     <p className="text-red-700">Error: {error}</p>
+//                   </td>
+//                 </tr>
 //               ) : history.length === 0 ? (
 //                 <tr>
-//                   <td colSpan={9} className="text-center py-12 text-gray-500">
+//                   <td colSpan={8} className="text-center py-12 text-gray-500">
 //                     <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-yellow-500" />
-//                     <p>No attendance records match the current filters.</p>
+//                     <p>No attendance records found for the selected filters.</p>
 //                   </td>
 //                 </tr>
 //               ) : (
 //                 history.map((record) => (
 //                   <tr
 //                     key={record.AttendanceId}
-//                     onClick={() => setSelectedRecord(record)}
-//                     className="hover:bg-indigo-50 cursor-pointer transition duration-150"
+//                     className="hover:bg-indigo-50 cursor-pointer transition"
+//                     onClick={() => handleRowClick(record)}
 //                   >
 //                     <td className="px-6 py-4 whitespace-nowrap">
 //                       <div className="text-sm font-medium text-gray-900">
 //                         {record.FullName}
 //                       </div>
 //                       <div className="text-xs text-gray-500">
-//                         Staff ID: {record.StaffId}
+//                         {record.StaffId}
 //                       </div>
 //                     </td>
 //                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-//                       {formatDate(record.WorkDate)}
+//                       {formatDate(new Date(record.WorkDate))}
 //                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap">
-//                       <span className="px-3 py-1 text-sm font-semibold text-green-800 bg-green-100 rounded-full">
-//                         {formatTime(record.CheckInAt)}
-//                       </span>
+//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-green-600 font-semibold">
+//                       {formatTime(record.CheckInAt)}
 //                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap">
-//                       <span
-//                         className={`px-3 py-1 text-sm font-semibold rounded-full ${
-//                           record.CheckOutAt
-//                             ? "text-red-800 bg-red-100"
-//                             : "text-gray-600 bg-gray-100"
-//                         }`}
-//                       >
-//                         {formatTime(record.CheckOutAt)}
-//                       </span>
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap">
-//                       <span
-//                         className={`px-3 py-1 text-sm font-semibold rounded-full ${
-//                           record.BreakInAt
-//                             ? "text-orange-800 bg-orange-100"
-//                             : "text-gray-600 bg-gray-100"
-//                         }`}
-//                       >
-//                         {formatTime(record.BreakInAt)}
-//                       </span>
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap">
-//                       <span
-//                         className={`px-3 py-1 text-sm font-semibold rounded-full ${
-//                           record.BreakOutAt
-//                             ? "text-yellow-800 bg-yellow-100"
-//                             : "text-gray-600 bg-gray-100"
-//                         }`}
-//                       >
-//                         {formatTime(record.BreakOutAt)}
-//                       </span>
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-//                       {record.BranchName || "N/A Branch"} /{" "}
-//                       {record.PositionName || "N/A Position"}
+//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-semibold">
+//                       {formatTime(record.CheckOutAt)}
 //                     </td>
 //                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-700">
-//                       {record.WorkDurationHours !== null
-//                         ? `${record.WorkDurationHours.toFixed(2)}`
-//                         : "—"}
+//                       {formatHoursDecimal(record.WorkDurationHours)}
+//                     </td>
+//                     {/* NEW TD for Status/Notes */}
+//                     <td className="px-6 py-4 whitespace-nowrap text-xs">
+//                       <div className="flex flex-col gap-1">
+//                         {record.LateMinutes && record.LateMinutes > 0 && (
+//                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 font-medium">
+//                             <AlertCircle className="w-3 h-3" /> Late:{" "}
+//                             {record.LateMinutes}m
+//                           </span>
+//                         )}
+//                         {record.OvertimeMinutes &&
+//                           record.OvertimeMinutes > 0 && (
+//                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-purple-100 text-purple-800 font-medium">
+//                               <Clock className="w-3 h-3" /> OT:{" "}
+//                               {minutesToHoursMinutes(record.OvertimeMinutes)}
+//                             </span>
+//                           )}
+//                         {/* Show nothing if both are 0/null */}
+//                         {(!record.LateMinutes || record.LateMinutes <= 0) &&
+//                           (!record.OvertimeMinutes ||
+//                             record.OvertimeMinutes <= 0) && <span>-</span>}
+//                       </div>
+//                     </td>
+//                     <td className="px-6 py-4 whitespace-nowrap">
+//                       <div className="text-sm font-medium text-gray-900">
+//                         {record.BranchName || "N/A"}
+//                       </div>
+//                       <div className="text-xs text-gray-500">
+//                         {record.PositionName || "N/A"}
+//                       </div>
 //                     </td>
 //                     <td className="px-6 py-4 whitespace-nowrap">
 //                       {record.SelfiePhotoUrl ? (
@@ -1821,7 +744,7 @@ export default ManageAttendance;
 //                           target="_blank"
 //                           rel="noopener noreferrer"
 //                           className="text-indigo-600 hover:text-indigo-800 text-sm font-medium"
-//                           onClick={(e) => e.stopPropagation()}
+//                           onClick={(e) => e.stopPropagation()} // Prevent row click when clicking link
 //                         >
 //                           View
 //                         </a>
@@ -1837,7 +760,7 @@ export default ManageAttendance;
 //         </div>
 //       </div>
 
-//       {/* Detail Modal */}
+//       {/* --- Detail Modal --- */}
 //       {selectedRecord && (
 //         <AttendanceDetailModal
 //           record={selectedRecord}
@@ -1850,3 +773,400 @@ export default ManageAttendance;
 // };
 
 // export default ManageAttendance;
+
+// // // //=========================================================//
+
+"use client";
+import React, { useState, useEffect, useCallback } from "react";
+import Link from "next/link";
+import {
+  Loader2,
+  Users,
+  Clock,
+  Filter,
+  AlertTriangle,
+  ArrowRight,
+  BarChart,
+  TrendingUp, // Keep for Summary Card
+  Search, // Keep for Staff ID filter
+} from "lucide-react";
+// Removed X, MapPin, Calendar, Pencil, ChevronLeft, ChevronRight, AlertCircle, Recharts imports as they are no longer used
+
+// --- CONFIGURATION ---
+const API_BASE_URL = "http://localhost:5050";
+
+// --- TYPES ---
+interface HistoryFilterParams {
+  branchId?: string;
+  positionId?: string;
+  startDate?: string;
+  endDate?: string;
+  staffId?: string;
+}
+
+// Keep SummaryData if keeping Summary Cards, otherwise remove
+interface SummaryData {
+  totalEntries: number;
+  totalUsers: number;
+  totalWorkHours: string;
+}
+
+interface FilterOption {
+  id: string;
+  name: string;
+}
+
+interface UserSummary {
+  id: string;
+  name: string;
+}
+
+// --- UTILITY FUNCTIONS ---
+const fetchApi = async (url: string, method: string = "GET", body?: any) => {
+  const token = localStorage.getItem("token");
+  if (!token) throw new Error("Authentication token not found.");
+  const headers: HeadersInit = {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  };
+  const response = await fetch(`${API_BASE_URL}${url}`, {
+    method,
+    headers,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!response.ok) {
+    const errorData = await response.json();
+    throw new Error(errorData.message || `API Error: ${response.statusText}`);
+  }
+  // Try to parse JSON, return text if it fails but response was ok
+  try {
+    return await response.json();
+  } catch (e) {
+    if (response.ok) return null;
+    throw new Error(`API Error: ${response.statusText}`);
+  }
+};
+
+// Use YYYY-MM-DD format for date inputs
+const formatDateForInput = (date: Date): string =>
+  date.toISOString().split("T")[0];
+
+// Format total work hours (needed for Summary Card if kept)
+const formatHoursDecimal = (hours: number | null | string): string => {
+  if (hours === null || typeof hours === "undefined") return "0.00"; // Default to 0.00
+  const numHours = typeof hours === "string" ? parseFloat(hours) : hours;
+  if (isNaN(numHours)) return "0.00"; // Default if parsing fails
+  return numHours.toFixed(2);
+};
+
+// --- CHILD COMPONENTS ---
+
+// Summary Card Component (Keep if keeping Summary Cards)
+const SummaryCard: React.FC<{
+  title: string;
+  value: string | number | React.ReactNode; // Allow ReactNode for loader
+  icon: React.ElementType;
+}> = ({ title, value, icon: Icon }) => (
+  <div className="flex-1 p-5 bg-white rounded-xl shadow-lg border border-gray-200 flex items-center gap-4 min-w-[200px]">
+    <div className="p-3 rounded-full bg-indigo-100 text-indigo-600">
+      <Icon className="w-6 h-6" />
+    </div>
+    <div>
+      <p className="text-sm font-medium text-gray-500">{title}</p>
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+    </div>
+  </div>
+);
+
+// --- MAIN COMPONENT ---
+const ManageAttendance = () => {
+  // Removed 'history' and 'selectedRecord' state
+  const [summary, setSummary] = useState<SummaryData | null>(null); // Keep if keeping cards
+  const [branches, setBranches] = useState<FilterOption[]>([]);
+  const [positions, setPositions] = useState<FilterOption[]>([]);
+
+  const [filters, setFilters] = useState({
+    branchId: "", // Default to empty string for "All Branches"
+    positionId: "", // Default to empty string for "All Positions"
+    startDate: formatDateForInput(
+      new Date(new Date().setDate(new Date().getDate() - 7))
+    ),
+    endDate: formatDateForInput(new Date()),
+    staffId: "",
+  });
+
+  // Removed 'isLoading' related to main table data
+  const [isFilterLoading, setIsFilterLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null); // Keep error for user list loading
+
+  const [userList, setUserList] = useState<UserSummary[]>([]);
+  const [isUserListLoading, setIsUserListLoading] = useState(false);
+
+  // --- Fetch Filter Options ---
+  const fetchFilterOptions = useCallback(async (endpoint: string) => {
+    // ... (fetchFilterOptions logic remains the same) ...
+    try {
+      const fullResponse = await fetchApi(`/${endpoint}`);
+      const dataToMap = fullResponse.items || [];
+      const optionsMap = new Map<string, string>();
+      dataToMap.forEach((item: any) => {
+        const id = item.BranchId || item.PositionId || item.id;
+        const name = item.BranchName || item.Name || item.name;
+        if (id && name && !optionsMap.has(id)) {
+          optionsMap.set(id, name);
+        }
+      });
+      return Array.from(optionsMap, ([id, name]) => ({ id, name }));
+    } catch (error) {
+      console.error(`Failed to fetch /${endpoint}:`, error);
+      setError(`Failed to load filter options (${endpoint})`); // Update error state
+      return [];
+    }
+  }, []);
+
+  useEffect(() => {
+    const loadFilters = async () => {
+      setIsFilterLoading(true);
+      setError(null); // Clear previous errors
+      const [branchList, positionList] = await Promise.all([
+        fetchFilterOptions("branches"),
+        fetchFilterOptions("positions"),
+      ]);
+      setBranches(branchList);
+      setPositions(positionList);
+      setIsFilterLoading(false);
+    };
+    loadFilters();
+  }, [fetchFilterOptions]);
+
+  // --- Fetch User List ---
+  const loadUsers = useCallback(async () => {
+    setIsUserListLoading(true);
+    setError(null); // Clear previous errors specifically for user loading
+    try {
+      const params = new URLSearchParams();
+      if (filters.branchId) params.append("branchId", filters.branchId);
+      if (filters.positionId) params.append("positionId", filters.positionId);
+      if (filters.staffId) params.append("staffId", filters.staffId);
+
+      const queryString = params.toString();
+      const url = `/users/minimal${queryString ? `?${queryString}` : ""}`;
+      const data = await fetchApi(url);
+      setUserList(data.items || []);
+    } catch (err: any) {
+      console.error("Failed to fetch user list:", err);
+      setError(err.message || "Failed to load employee list."); // Set error state
+      setUserList([]);
+    } finally {
+      setIsUserListLoading(false);
+    }
+  }, [filters.branchId, filters.positionId, filters.staffId]);
+
+  // Removed 'fetchData' function
+
+  // Update useEffect to only call loadUsers
+  useEffect(() => {
+    if (!isFilterLoading) {
+      // fetchData(); // <-- REMOVED
+      loadUsers();
+    }
+    // Removed fetchData from dependencies
+  }, [loadUsers, isFilterLoading]);
+
+  // --- Handlers ---
+  const handleFilterChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
+    const { name, value } = e.target;
+    setFilters((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleResetFilters = () => {
+    setFilters({
+      branchId: "",
+      positionId: "",
+      startDate: formatDateForInput(
+        new Date(new Date().setDate(new Date().getDate() - 7))
+      ),
+      endDate: formatDateForInput(new Date()),
+      staffId: "",
+    });
+  };
+
+  // Removed 'handleRowClick' function
+
+  // --- Filter Components ---
+  const FilterDropdown: React.FC<{
+    label: string;
+    name: "branchId" | "positionId";
+    options: FilterOption[];
+  }> = ({ label, name, options }) => (
+    // ... (FilterDropdown component remains the same) ...
+    <div className="flex-1 min-w-[150px]">
+      <label className="text-xs font-semibold text-gray-600 mb-1 block">
+        {label}
+      </label>
+      <select
+        name={name}
+        value={filters[name]}
+        onChange={handleFilterChange}
+        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500 appearance-none pr-8"
+        disabled={isFilterLoading || isUserListLoading} // Changed isLoading to isUserListLoading
+      >
+        <option value="">
+          All {label.includes("Branch") ? "Branches" : "Positions"}
+        </option>
+        {options.map((option) => (
+          <option key={option.id} value={option.id}>
+            {option.name}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+
+  const DatePicker: React.FC<{
+    label: string;
+    name: "startDate" | "endDate";
+  }> = ({ label, name }) => (
+    // ... (DatePicker component remains the same) ...
+    <div className="flex-1 min-w-[150px]">
+      <label className="text-xs font-semibold text-gray-600 mb-1 block">
+        {label}
+      </label>
+      <input
+        type="date"
+        name={name}
+        value={filters[name]}
+        onChange={handleFilterChange}
+        className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+        disabled={isUserListLoading} // Changed isLoading to isUserListLoading
+      />
+    </div>
+  );
+
+  return (
+    <div className="p-6 md:p-10 bg-gradient-to-br from-gray-50 to-gray-100 min-h-screen">
+      <h1 className="text-3xl lg:text-4xl font-extrabold text-gray-900 mb-8 pb-2 flex items-center">
+        <Clock className="w-8 h-8 mr-3 text-purple-600" />
+        Attendance Monitoring
+      </h1>
+
+      {/* --- Filter UI --- */}
+      <div className="bg-white p-5 rounded-2xl shadow-lg mb-8 border border-gray-200">
+        <h3 className="text-lg font-bold text-gray-800 mb-4 flex items-center">
+          <Filter className="w-5 h-5 mr-2 text-indigo-500" />
+          Filter Data
+          {isFilterLoading && (
+            <Loader2 className="w-4 h-4 ml-3 animate-spin text-indigo-500" />
+          )}
+        </h3>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4 items-end">
+          <div className="lg:col-span-1">
+            <FilterDropdown
+              label="Filter by Branch"
+              name="branchId"
+              options={branches}
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <FilterDropdown
+              label="Filter by Position"
+              name="positionId"
+              options={positions}
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <label className="text-xs font-semibold text-gray-600 mb-1 block">
+              {" "}
+              Staff ID{" "}
+            </label>
+            <input
+              type="text"
+              name="staffId"
+              value={filters.staffId}
+              onChange={handleFilterChange}
+              placeholder="Enter Staff ID..."
+              className="w-full px-4 py-2.5 bg-white border border-gray-300 rounded-lg text-gray-700 text-sm focus:ring-indigo-500 focus:border-indigo-500"
+              disabled={isUserListLoading || isFilterLoading} // Use isUserListLoading
+            />
+          </div>
+          <div className="lg:col-span-1">
+            <DatePicker label="Start Date" name="startDate" />
+          </div>
+          <div className="lg:col-span-1">
+            <DatePicker label="End Date" name="endDate" />
+          </div>
+          <div className="lg:col-span-1 flex items-end">
+            <button
+              onClick={handleResetFilters}
+              className="w-full px-4 py-2.5 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 transition text-sm font-medium flex items-center justify-center"
+              disabled={isUserListLoading} // Use isUserListLoading
+              title="Reset Filters"
+            >
+              {" "}
+              Reset{" "}
+            </button>
+          </div>
+        </div>
+        {/* Display general error messages here */}
+        {error && !isUserListLoading && (
+          <div className="mt-4 p-3 bg-red-100 border border-red-300 text-red-700 rounded-lg text-sm flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" /> {error}
+          </div>
+        )}
+      </div>
+
+      {/* === EMPLOYEE REPORTS SECTION === */}
+      <div className="bg-white p-5 rounded-2xl shadow-lg mb-8 border border-gray-200">
+        <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center">
+          <BarChart className="w-5 h-5 mr-2 text-indigo-500" />
+          Employee Reports
+          {isUserListLoading && (
+            <Loader2 className="w-4 h-4 ml-3 animate-spin text-indigo-500" />
+          )}
+        </h3>
+        <div className="max-h-60 overflow-y-auto pr-2">
+          {isUserListLoading ? (
+            <div className="text-center py-4 text-gray-500">
+              {" "}
+              Loading users...{" "}
+            </div>
+          ) : !userList || userList.length === 0 ? (
+            <div className="text-center py-4 text-gray-500">
+              {" "}
+              No users found matching filters.{" "}
+            </div>
+          ) : (
+            <ul className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {userList.map((user) => (
+                <li key={user.id}>
+                  <Link
+                    href={`/attendance-report/${user.id}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between p-3 bg-gray-50 border border-gray-200 rounded-lg hover:bg-indigo-50 hover:border-indigo-300 transition group"
+                  >
+                    <span
+                      className="text-sm font-medium text-gray-800 group-hover:text-indigo-700 truncate"
+                      title={user.name}
+                    >
+                      {user.name || `User (${user.id.substring(0, 6)}...)`}
+                    </span>
+                    <ArrowRight className="w-4 h-4 text-gray-400 group-hover:text-indigo-600 transition flex-shrink-0" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+
+      {/* --- Attendance Details Table REMOVED --- */}
+
+      {/* --- Detail Modal REMOVED --- */}
+    </div>
+  );
+};
+
+export default ManageAttendance;
