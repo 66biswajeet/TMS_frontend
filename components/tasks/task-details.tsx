@@ -173,6 +173,8 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     daysCompleted: number;
   } | null>(null);
 
+
+  //-- Placeholder for selected user to forward task to --
   // Get current user from Redux state
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
   useEffect(() => {

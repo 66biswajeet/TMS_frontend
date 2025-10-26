@@ -50,6 +50,8 @@ import {
 // Import the virtualization hook
 import { useVirtualizer } from "@tanstack/react-virtual";
 
+
+//-- new Changes --
 // --- Debounce Hook (put this in hooks/useDebounce.ts or keep it here) ---
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -92,14 +94,14 @@ interface User {
   createdAt: string;
 }
 
+// -- this mapping is no longer needed with the new dynamic approach --
 // Define role-specific positions mapping
 // const ROLE_POSITIONS = {
 //   staff: [
 //     "Pharmacist",
 //     "Assistant Pharmacist",
 //     "Pharmacy Technician",
-//     "Cashier",
-    "HR",
+//     "Cashier
 //     "Inventory Clerk",
 //     "Customer Service Representative",
 //   ],
