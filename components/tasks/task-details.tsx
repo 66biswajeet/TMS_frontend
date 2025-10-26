@@ -387,10 +387,10 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
       );
 
       // Example API call (commented out until user selection is implemented):
-      // await api.post(`/tasks/${taskId}/forward`, {
-      //   toUserId: selectedUserId,
-      //   notes: "Task forwarded"
-      // })
+      await api.post(`/tasks/${taskId}/forward`, {
+        toUserId: selectedUserId,
+        notes: "Task forwarded"
+      })
     } catch (error) {
       console.error("Failed to forward task:", error);
       showError("Failed to forward task. Please try again.");

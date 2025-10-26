@@ -53,8 +53,8 @@ interface Position {
   Name: string;
   IsActive: boolean;
   CreatedAt?: string;
-  BranchId?: string;
-  BranchName?: string;
+  RoleRankId?: string;
+  RoleName?: string;
 }
 
 // Define role-specific positions mapping
@@ -113,11 +113,12 @@ export function PositionsManagement() {
   const [editingPosition, setEditingPosition] = useState<Position | null>(null);
   const [selectedRole, setSelectedRole] = useState<string>("");
   const [branches, setBranches] = useState<any[]>([]);
+  const [roles, setRoles] = useState<any[]>([]);
 
   const [formData, setFormData] = useState({
     Name: "",
     IsActive: true,
-    BranchId: "",
+    RoleRankId: "",
   });
 
   const filteredPositions = positions.filter((position: any) => {
@@ -173,7 +174,7 @@ export function PositionsManagement() {
     setFormData({
       Name: "",
       IsActive: true,
-      BranchId: "",
+      RoleRankId: "",
     });
     setIsDialogOpen(true);
   };
@@ -183,7 +184,7 @@ export function PositionsManagement() {
     setFormData({
       Name: position.Name,
       IsActive: position.IsActive,
-      BranchId: position.BranchId || "",
+      RoleRankId: position.RoleRankId || "",
     });
     setIsDialogOpen(true);
   };
@@ -216,26 +217,20 @@ export function PositionsManagement() {
     dispatch(fetchPositions() as any);
 
     // Fetch branches for the dropdown
-    const fetchBranches = async () => {
+    const fetchRoles = async () => {
       try {
-        // Use your api.get helper, not fetch
-        // The endpoint is "/branches" which maps to 'listBranches'
-        const response = await api.get("/branches");
-
-        if (response.data.success) {
-          setBranches(response.data.items);
+        const response = await api.get("/roles"); // <-- Use your roles endpoint
+        if (response.data.items) {
+          setRoles(response.data.items);
         } else {
-          // Use the error message from the API if it exists
-          showError(response.data.message || "Failed to load branches");
+          showError("Failed to load roles");
         }
       } catch (error: any) {
-        console.error("Error fetching branches:", error);
-        // Show a more specific error from the catch block
-        showError(error.message || "Error fetching branches");
+        console.error("Error fetching roles:", error);
+        showError(error.message || "Error fetching roles");
       }
     };
-
-    fetchBranches();
+    fetchRoles();
   }, [dispatch]);
 
   const getStatusColor = (isActive: boolean) => {
@@ -414,6 +409,7 @@ export function PositionsManagement() {
               <thead className="border-b">
                 <tr>
                   <th className="text-left p-4 font-medium">Position Name</th>
+                  <th className="text-left p-4 font-medium">Assigned Role </th>
                   <th className="text-left p-4 font-medium">Status</th>
                   <th className="text-left p-4 font-medium">Created Date</th>
                   <th className="text-left p-4 font-medium">Actions</th>
@@ -426,10 +422,13 @@ export function PositionsManagement() {
                     className="border-b hover:bg-muted/50"
                   >
                     <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <Briefcase className="h-4 w-4 text-muted-foreground" />
-                        <span className="font-medium">{position.Name}</span>
-                      </div>
+                      {position.RoleName ? (
+                        <Badge variant="outline">
+                          {position.RoleName.replace("_", " ")}
+                        </Badge>
+                      ) : (
+                        <Badge variant="secondary">Global</Badge>
+                      )}
                     </td>
                     <td className="p-4">
                       <Badge
@@ -500,26 +499,26 @@ export function PositionsManagement() {
               />
             </div>
 
-            {/* ----- ADD THIS SECTION FOR BRANCHES ----- */}
+            {/* ----- THIS IS THE REPLACEMENT DROPDOWN ----- */}
             <div className="space-y-2">
-              <Label htmlFor="BranchId">Assign to Branch (Optional)</Label>
+              <Label htmlFor="RoleRankId">Assign to Role (Optional)</Label>
               <Select
-                value={formData.BranchId}
+                value={formData.RoleRankId || "global"}
                 onValueChange={(value) =>
                   setFormData({
                     ...formData,
-                    BranchId: value === "global" ? "" : value,
+                    RoleRankId: value === "global" ? "" : value,
                   })
                 }
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select a branch" />
+                  <SelectValue placeholder="Select a role" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="global">Global (No Branch)</SelectItem>
-                  {branches.map((branch) => (
-                    <SelectItem key={branch.BranchId} value={branch.BranchId}>
-                      {branch.BranchName}
+                  <SelectItem value="global">Global (No Role)</SelectItem>
+                  {roles.map((role) => (
+                    <SelectItem key={role.RoleRankId} value={role.RoleRankId}>
+                      {role.Name.replace("_", " ")}
                     </SelectItem>
                   ))}
                 </SelectContent>
