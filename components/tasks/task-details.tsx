@@ -1,5 +1,5 @@
+//-- Changes to show on github to see the diff --//
 "use client";
-
 import { useState, useEffect } from "react";
 import {
   Card,
@@ -173,6 +173,8 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     daysCompleted: number;
   } | null>(null);
 
+
+  //-- Placeholder for selected user to forward task to --
   // Get current user from Redux state
   const { user: currentUser } = useSelector((state: RootState) => state.auth);
   useEffect(() => {

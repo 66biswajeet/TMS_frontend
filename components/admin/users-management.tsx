@@ -1,3 +1,4 @@
+//-- Changes to show on github to see the diff --//
 "use client";
 
 import type React from "react";
@@ -54,6 +55,8 @@ import {
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { apiFetch } from "@/lib/api";
 
+
+//-- new Changes --
 // --- Debounce Hook (put this in hooks/useDebounce.ts or keep it here) ---
 function useDebounce<T>(value: T, delay: number): T {
   const [debouncedValue, setDebouncedValue] = useState<T>(value);
@@ -96,32 +99,32 @@ interface User {
   createdAt: string;
 }
 
+// -- this mapping is no longer needed with the new dynamic approach --
 // Define role-specific positions mapping
-const ROLE_POSITIONS = {
-  staff: [
-    "Pharmacist",
-    "Assistant Pharmacist",
-    "Pharmacy Technician",
-    "Cashier",
-    "HR",
-    "Inventory Clerk",
-    "Customer Service Representative",
-  ],
-  branch_manager: ["Branch Manager", "Pharmacy Manager"],
-  area_manager: ["Area Manager", "Regional Supervisor"],
-  auditor: [
-    "Quality Control Supervisor",
-    "Compliance Auditor",
-    "Regulatory Inspector",
-  ],
-  management: [
-    "Chief Executive Officer (CEO)",
-    "Owner",
-    "Operations Director",
-    "Pharmacy Director",
-  ],
-  admin: ["System Administrator", "IT Manager"],
-};
+// const ROLE_POSITIONS = {
+//   staff: [
+//     "Pharmacist",
+//     "Assistant Pharmacist",
+//     "Pharmacy Technician",
+//     "Cashier
+//     "Inventory Clerk",
+//     "Customer Service Representative",
+//   ],
+//   branch_manager: ["Branch Manager", "Pharmacy Manager"],
+//   area_manager: ["Area Manager", "Regional Supervisor"],
+//   auditor: [
+//     "Quality Control Supervisor",
+//     "Compliance Auditor",
+//     "Regulatory Inspector",
+//   ],
+//   management: [
+//     "Chief Executive Officer (CEO)",
+//     "Owner",
+//     "Operations Director",
+//     "Pharmacy Director",
+//   ],
+//   admin: ["System Administrator", "IT Manager"],
+// };
 
 // --- NEW: Reset Password Modal Component ---
 const ResetPasswordModal: React.FC<{
@@ -392,22 +395,30 @@ export function UsersManagement() {
 
   // --- MEMOIZED & CALLBACK FUNCTIONS ---
 
+  // Find and delete the old getFilteredPositions function and REPLACE it with this:
   const getFilteredPositions = useCallback(
     (selectedRole: string) => {
-      if (!selectedRole) return positions;
+      // 1. If no role is selected, show only "Global" positions
+      if (!selectedRole) {
+        return positions.filter((pos: any) => !pos.RoleRankId);
+      }
 
-      const rolePositions =
-        ROLE_POSITIONS[selectedRole as keyof typeof ROLE_POSITIONS] || [];
+      // 2. Find the full Role object (from Redux)
+      const selectedRoleObj = roles.find((r: any) => r.Name === selectedRole);
 
-      return positions.filter((position: any) =>
-        rolePositions.some(
-          (rolePosName) =>
-            position.Name.toLowerCase().includes(rolePosName.toLowerCase()) ||
-            rolePosName.toLowerCase().includes(position.Name.toLowerCase())
-        )
-      );
+      // 3. If the role can't be found, return empty
+      if (!selectedRoleObj) {
+        return [];
+      }
+
+      const targetRoleRankId = selectedRoleObj.RoleRankId;
+
+      // 4. Return ONLY positions that strictly match the selected role's ID
+      return positions.filter((pos: any) => {
+        return pos.RoleRankId === targetRoleRankId;
+      });
     },
-    [positions]
+    [positions, roles] // Make sure dependencies are correct
   );
 
   // --- MEMOIZED FILTERED USERS ---
