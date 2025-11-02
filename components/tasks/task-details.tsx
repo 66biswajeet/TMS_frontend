@@ -1,6 +1,6 @@
 //-- Changes to show on github to see the diff --//
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -57,11 +57,11 @@ interface ChecklistItem {
 }
 
 interface ActivityItem {
-  id: number;
-  action: string;
-  user: string;
-  timestamp: string;
-  details?: string;
+  ActivityId: number;
+  Action: string;
+  UserName: string;
+  Timestamp: string;
+  Details?: string;
 }
 
 interface WorkflowStep {
@@ -167,12 +167,12 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [error, setError] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const hasAutoSubmittedRef = useRef(false);
   const [recurrence, setRecurrence] = useState<{
     isDaily: boolean;
     totalDays: number;
     daysCompleted: number;
   } | null>(null);
-
 
   //-- Placeholder for selected user to forward task to --
   // Get current user from Redux state
@@ -401,17 +401,97 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     }
   };
 
-  const handleDeadlineReached = async () => {
-    if (task?.AutoForward) {
-      try {
-        // Use auto-forward endpoint that preserves checklist state
-        await api.post(`/tasks/${taskId}/auto-forward`);
-        window.location.reload();
-      } catch (error) {
-        console.error("Failed to auto-forward task:", error);
-      }
+  // ... (Lines 348-429: submitTask, approveTask, rejectTask, forwardTask definitions)
+
+  // ----------------------------------------------------
+  // ✅ NEW useEffect for Auto-Submission 10 Seconds BEFORE Deadline
+  // ----------------------------------------------------
+  // ----------------------------------------------------
+  // ✅ NEW useEffect for Auto-Submission 10 Seconds BEFORE Deadline
+  // ----------------------------------------------------
+  useEffect(() => {
+    // 1. **CRITICAL CHECK**: Exit immediately if auto-submission has already run
+    if (hasAutoSubmittedRef.current) {
+      return;
     }
-  };
+
+    // Only auto-submit if we have a task and it's not already submitted/approved/rejected/expired
+    if (
+      !task ||
+      task.Status === "submitted" ||
+      task.Status === "approved" ||
+      task.Status === "rejected" ||
+      task.Status === "expired"
+    ) {
+      return;
+    }
+
+    const deadlineDate = new Date(task.Deadline);
+    const now = new Date();
+    const timeRemaining = deadlineDate.getTime() - now.getTime();
+
+    // Set a buffer of 10 seconds (10000 milliseconds)
+    const SUBMIT_BUFFER_MS = 10000;
+
+    // Calculate the delay until 10 seconds *before* the deadline
+    const delayBeforeDeadline = timeRemaining - SUBMIT_BUFFER_MS;
+
+    let timerId: NodeJS.Timeout | null = null;
+
+    const triggerSubmit = () => {
+      // 2. Set the flag *before* calling submitTask
+      hasAutoSubmittedRef.current = true;
+      console.log(`[Auto-Submit] Task ${taskId}: Triggering submitTask...`);
+      // Call the existing function to submit the task
+      submitTask();
+    };
+
+    // 1. If the submission window is in the future (i.e., more than 10 seconds remaining)
+    if (delayBeforeDeadline > 1000) {
+      // Check if we have at least 1 second for the timer itself
+      timerId = setTimeout(() => {
+        console.log(
+          `[Auto-Submit] Task ${taskId}: 10 seconds before deadline. Triggering submitTask...`
+        );
+        triggerSubmit();
+      }, delayBeforeDeadline);
+    }
+    // 2. If the current time is inside the 10-second buffer
+    //    (i.e., deadline is 10s to 0s away) AND the task is not yet submitted.
+    else if (timeRemaining > 0 && timeRemaining <= SUBMIT_BUFFER_MS) {
+      console.log(
+        `[Auto-Submit] Task ${taskId}: Deadline is imminent (<10s). Submitting immediately.`
+      );
+      triggerSubmit(); // <-- Use the new function
+    }
+    // 3. If the deadline has passed (timeRemaining <= 0) and the status is still not final,
+    //    submit it immediately. This handles cases where the page was loaded late.
+    else if (timeRemaining <= 0 && task.Status !== "submitted") {
+      console.log(
+        `[Auto-Submit] Task ${taskId}: Deadline has already passed. Submitting immediately.`
+      );
+      triggerSubmit(); // <-- Use the new function
+    }
+
+    // Cleanup function to clear the timer if the component unmounts or task changes
+    return () => {
+      if (timerId) {
+        clearTimeout(timerId);
+      }
+    };
+  }, [taskId, task, submitTask]); // Dependencies
+
+  // const handleDeadlineReached = async () => {
+  //   if (task?.AutoForward) {
+  //     try {
+  //       // Use auto-forward endpoint that preserves checklist state
+  //       await api.post(`/tasks/${taskId}/auto-forward`);
+  //       window.location.reload();
+  //     } catch (error) {
+  //       console.error("Failed to auto-forward task:", error);
+  //     }
+  //   }
+  // };
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -478,7 +558,9 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     if (!approverRoles.includes(currentUser.role)) return false;
 
     // Rule 3: Task must be submitted to be approved
-    if (task.Status !== "submitted") return false;
+    const isAwaitingReview =
+      task.Status === "submitted" || task.Status.startsWith("Pending");
+    if (!isAwaitingReview) return false;
 
     return true;
   };
@@ -500,13 +582,10 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
     }
 
     if (diffHours < 0) {
-      if (task?.AutoForward) {
-        handleDeadlineReached();
-      }
+      // Just show it's overdue. The backend scheduler will handle the submission.
+      // When the page reloads, the 'if' block above will catch the new 'submitted' status.
       return {
-        text: `Overdue by ${Math.abs(diffHours)}h${
-          task?.AutoForward ? " - Auto-forwarded" : ""
-        }`,
+        text: `Overdue by ${Math.abs(diffHours)}h`,
         color: "text-red-600",
       };
     } else if (diffHours < 24) {
@@ -979,7 +1058,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
           </Card>
         </TabsContent>
 
-        <TabsContent value="review">
+        {/* <TabsContent value="review">
           <Card>
             <CardHeader>
               <CardTitle>Review & Approval</CardTitle>
@@ -1040,6 +1119,114 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
               )}
             </CardContent>
           </Card>
+        </TabsContent> */}
+
+        <TabsContent value="review">
+          <Card>
+            <CardHeader>
+              <CardTitle>Review & Approval</CardTitle>
+              <CardDescription>
+                Current status and history of task reviews.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {(() => {
+                // Find the most recent "approved" or "rejected" action in the log
+                const reviewActivity = activityLog.find(
+                  (a) =>
+                    a.Action === "Task approved" || a.Action === "Task rejected"
+                );
+
+                // 1. If task is "approved", "completed", or "rejected"
+                //    AND we have a log entry for it, show the final review.
+                if (
+                  (task.Status === "approved" ||
+                    task.Status === "completed" ||
+                    task.Status === "rejected") &&
+                  reviewActivity
+                ) {
+                  return (
+                    <div className="space-y-4">
+                      <h4 className="font-medium">Review Complete</h4>
+                      <div className="p-4 bg-muted rounded-md border">
+                        <div className="flex justify-between items-center">
+                          <span
+                            className={`font-semibold ${
+                              reviewActivity.Action === "Task approved"
+                                ? "text-green-600"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {reviewActivity.Action}
+                          </span>
+                          <span className="text-sm text-muted-foreground">
+                            by {reviewActivity.UserName}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {new Date(reviewActivity.Timestamp).toLocaleString()}
+                        </p>
+                        {reviewActivity.Details &&
+                          reviewActivity.Details.trim().length > 0 && (
+                            <p className="mt-3 text-sm">
+                              {reviewActivity.Details}
+                            </p>
+                          )}
+                      </div>
+                    </div>
+                  );
+                }
+
+                // 2. (FIXED) If task status is "Pending_Role" (e.g., "Pending_Area_Manager")
+                //    Show who it is waiting for.
+                if (
+                  task.Status.startsWith("Pending") &&
+                  task.Status.includes("_")
+                ) {
+                  // This formats "Pending_Area_Manager" into "Area Manager"
+                  const awaitingRole = task.Status.split("_")
+                    .slice(1)
+                    .join(" ");
+
+                  return (
+                    <div className="text-center py-8">
+                      <p className="font-medium text-lg">Awaiting Review</p>
+                      <p className="text-muted-foreground">
+                        This task is currently pending review from:{" "}
+                        <span className="font-semibold text-primary">
+                          {awaitingRole}
+                        </span>
+                      </p>
+                    </div>
+                  );
+                }
+
+                // 3. If task is "submitted" but not yet pending a specific person
+                if (task.Status === "submitted") {
+                  return (
+                    <div className="text-center py-8">
+                      <p className="font-medium text-lg">Submitted</p>
+                      <p className="text-muted-foreground">
+                        The task has been submitted and is processing for
+                        review.
+                      </p>
+                    </div>
+                  );
+                }
+
+                // 4. Default case (e.g., "in_progress", or "Pending")
+                //    This will now correctly catch the "Pending" status
+                return (
+                  <div className="text-center py-8">
+                    <p className="text-muted-foreground">
+                      Task must be submitted by assignees before it can be
+                      reviewed.
+                    </p>
+                  </div>
+                );
+              })()}
+            </CardContent>
+          </Card>
         </TabsContent>
 
         <TabsContent value="activity">
@@ -1053,30 +1240,26 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
             <CardContent>
               <div className="space-y-4">
                 {activityLog.map((activity, index) => (
-                  <div key={activity.id} className="flex gap-4">
-                    <div className="flex flex-col items-center">
-                      <div className="w-2 h-2 bg-primary rounded-full" />
-                      {index < activityLog.length - 1 && (
-                        <div className="w-px h-8 bg-border mt-2" />
-                      )}
-                    </div>
+                  <div key={activity.ActivityId} className="flex gap-4">
+                    {" "}
+                    {/* Use ActivityId */}
+                    {/* ... icon ... */}
                     <div className="flex-1 pb-4">
                       <div className="flex items-center gap-2">
                         <span className="font-medium text-sm">
-                          {activity.action}
+                          {activity.Action} {/* Use Action */}
                         </span>
                         <span className="text-xs text-muted-foreground">
-                          by {activity.user}
+                          by {activity.UserName} {/* Use UserName */}
                         </span>
                       </div>
                       <p className="text-xs text-muted-foreground">
-                        {new Date(activity.timestamp).toLocaleString()}
+                        {new Date(activity.Timestamp).toLocaleString()}{" "}
+                        {/* Use Timestamp */}
                       </p>
-                      {activity.details && (
-                        <p className="text-sm text-muted-foreground mt-1">
-                          {activity.details}
-                        </p>
-                      )}
+                      <p className="text-sm text-muted-foreground mt-1 bg-muted p-2 rounded">
+                        {activity.Details} {/* Use Details */}
+                      </p>
                     </div>
                   </div>
                 ))}
