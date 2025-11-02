@@ -1,4 +1,13 @@
-import { HomeIcon, CheckSquareIcon, FileTextIcon, UsersIcon, MapPinIcon, UserCheckIcon, BarChartIcon, BriefcaseIcon } from "lucide-react"
+import {
+  HomeIcon,
+  CheckSquareIcon,
+  FileTextIcon,
+  UsersIcon,
+  MapPinIcon,
+  UserCheckIcon,
+  BarChartIcon,
+  BriefcaseIcon,
+} from "lucide-react";
 
 type AppUser = {
   role: string;
@@ -6,12 +15,12 @@ type AppUser = {
 };
 
 export interface NavItem {
-  label: string
-  href: string
-  icon: any
-  badge?: number
-  roles: string[]
-  children?: NavItem[]
+  label: string;
+  href: string;
+  icon: any;
+  badge?: number;
+  roles: string[];
+  children?: NavItem[];
   specialAccess?: (user: AppUser) => boolean;
 }
 
@@ -20,13 +29,27 @@ export const navigationConfig: NavItem[] = [
     label: "Dashboard",
     href: "/dashboard/management",
     icon: HomeIcon,
-    roles: ["staff", "branch_manager", "area_manager", "auditor", "management", "admin"],
+    roles: [
+      "staff",
+      "branch_manager",
+      "area_manager",
+      "auditor",
+      "management",
+      "admin",
+    ],
   },
   {
     label: "Tasks",
     href: "/tasks",
     icon: CheckSquareIcon,
-    roles: ["staff", "branch_manager", "area_manager", "auditor", "management", "admin"],
+    roles: [
+      "staff",
+      "branch_manager",
+      "area_manager",
+      "auditor",
+      "management",
+      "admin",
+    ],
   },
   {
     label: "Templates",
@@ -44,10 +67,16 @@ export const navigationConfig: NavItem[] = [
     label: "My Attendance",
     href: "/attendance",
     icon: BarChartIcon,
-    roles: ["staff","branch_manager", "area_manager", "auditor", "management", "admin"],
+    roles: [
+      "staff",
+      "branch_manager",
+      "area_manager",
+      "auditor",
+      "management",
+      "admin",
+    ],
   },
- 
-  
+
   {
     label: "Manage",
     href: "#",
@@ -84,8 +113,7 @@ export const navigationConfig: NavItem[] = [
         icon: BarChartIcon,
         roles: ["management", "admin"],
         specialAccess: (user) =>
-          user.role === 'staff' && user.position?.toLowerCase() === 'hr',
-      
+          user.role === "staff" && user.position?.toLowerCase() === "hr",
       },
       {
         label: "Manage Queries",
@@ -93,7 +121,7 @@ export const navigationConfig: NavItem[] = [
         icon: BarChartIcon,
         roles: ["management", "admin"],
         specialAccess: (user) =>
-          user.role === 'staff' && user.position?.toLowerCase() === 'hr',
+          user.role === "staff" && user.position?.toLowerCase() === "hr",
       },
       {
         label: "Manage Expected Timings",
@@ -101,11 +129,19 @@ export const navigationConfig: NavItem[] = [
         icon: BarChartIcon,
         roles: ["management", "admin"],
         specialAccess: (user) =>
-          user.role === 'staff' && user.position?.toLowerCase() === 'hr',
+          user.role === "staff" && user.position?.toLowerCase() === "hr",
+      },
+      {
+        label: "Password Reset Requests",
+        href: "/forget-pass-note",
+        icon: BarChartIcon,
+        roles: ["management", "admin"],
+        specialAccess: (user) =>
+          user.role === "staff" && user.position?.toLowerCase() === "hr",
       },
     ],
   },
-]
+];
 
 // export const getUserNavigationItems = (userRole: string): NavItem[] => {
 //   return navigationConfig
@@ -116,27 +152,27 @@ export const navigationConfig: NavItem[] = [
 //     }))
 // }
 
-
 export const getUserNavigationItems = (user: AppUser): NavItem[] => {
   return navigationConfig
-    .map(item => {
+    .map((item) => {
       // First, filter the children (if any)
-      const visibleChildren = item.children?.filter(child =>
-        // Check 1: Does the user have the role?
-        child.roles.includes(user.role) ||
-        // Check 2: Does the user pass the special access check?
-        (child.specialAccess && child.specialAccess(user))
+      const visibleChildren = item.children?.filter(
+        (child) =>
+          // Check 1: Does the user have the role?
+          child.roles.includes(user.role) ||
+          // Check 2: Does the user pass the special access check?
+          (child.specialAccess && child.specialAccess(user))
       );
 
       // Return the item with its children filtered
       return {
         ...item,
-        children: visibleChildren
+        children: visibleChildren,
       };
     })
-    .filter(item => {
+    .filter((item) => {
       // Now, filter the top-level items
-      
+
       // Check 1: Does the user have the role for the parent?
       if (item.roles.includes(user.role)) return true;
 

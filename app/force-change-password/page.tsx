@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { showSuccess, showError } from "@/lib/toast";
 import { api } from "@/lib/axios"; // Use the same authenticated API client
 
 export default function ForceChangePasswordPage() {
@@ -15,9 +16,60 @@ export default function ForceChangePasswordPage() {
   const [error, setError] = useState("");
   const router = useRouter();
 
+  // const handleSubmit = async (e: React.FormEvent) => {
+  //   e.preventDefault();
+  //   setError("");
+
+  //   // 1. Frontend Validation
+  //   if (!currentPassword || !newPassword || !confirmPassword) {
+  //     setError("Please fill in all fields.");
+  //     return;
+  //   }
+  //   if (newPassword !== confirmPassword) {
+  //     setError("New passwords do not match.");
+  //     return;
+  //   }
+  //   if (newPassword.length < 8) {
+  //     setError("New password must be at least 8 characters long.");
+  //     return;
+  //   }
+
+  //   setIsLoading(true);
+
+  //   try {
+  //     // 2. API Call to the new backend endpoint
+  //     // This will use the token from localStorage
+  //     await api.post("/auth/change-password", {
+  //       currentPassword,
+  //       newPassword,
+  //     });
+
+  //     // 3. Success: Log the user out and redirect to login
+  //     // Clear all auth data
+  //     localStorage.removeItem("token");
+  //     localStorage.removeItem("isAuthenticated");
+  //     localStorage.removeItem("userRole");
+  //     localStorage.removeItem("userName");
+  //     localStorage.removeItem("userEmail");
+  //     localStorage.removeItem("selectedBranchId");
+
+  //     // Redirect to login page.
+  //     // You could add a query param to show a success message.
+  //     router.push("/?message=Password+changed.+Please+log+in+again.");
+  //   } catch (err: any) {
+  //     console.error("Password change error:", err);
+  //     setError(
+  //       err.response?.data?.message ||
+  //         "Failed to change password. Please check your current password."
+  //     );
+  //   } finally {
+  //     setIsLoading(false);
+  //   }
+  // };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
+    setError(""); // Keep this to clear the old error box
 
     // 1. Frontend Validation
     if (!currentPassword || !newPassword || !confirmPassword) {
@@ -36,34 +88,41 @@ export default function ForceChangePasswordPage() {
     setIsLoading(true);
 
     try {
-      // 2. API Call to the new backend endpoint
-      // This will use the token from localStorage
+      // 2. API Call
       await api.post("/auth/change-password", {
         currentPassword,
         newPassword,
       });
 
-      // 3. Success: Log the user out and redirect to login
-      // Clear all auth data
-      localStorage.removeItem("token");
-      localStorage.removeItem("isAuthenticated");
-      localStorage.removeItem("userRole");
-      localStorage.removeItem("userName");
-      localStorage.removeItem("userEmail");
-      localStorage.removeItem("selectedBranchId");
+      // 3. Success: Show the toast!
+      showSuccess("Password reset successfully! Please log in again.");
 
-      // Redirect to login page.
-      // You could add a query param to show a success message.
-      router.push("/?message=Password+changed.+Please+log+in+again.");
+      // 4. Wait 2 seconds, then log out and redirect
+      setTimeout(() => {
+        // Clear all auth data
+        localStorage.removeItem("token");
+        localStorage.removeItem("isAuthenticated");
+        localStorage.removeItem("userRole");
+        localStorage.removeItem("userName");
+        localStorage.removeItem("userEmail");
+        localStorage.removeItem("selectedBranchId");
+
+        // Redirect to login page
+        router.push("/");
+      }, 2000); // 2-second delay
     } catch (err: any) {
       console.error("Password change error:", err);
-      setError(
+      const errorMessage =
         err.response?.data?.message ||
-          "Failed to change password. Please check your current password."
-      );
-    } finally {
-      setIsLoading(false);
+        "Failed to change password. Please check your current password.";
+
+      // Use toast for error
+      showError(errorMessage);
+      setError(errorMessage); // Also keep setting the local error if you want
+
+      setIsLoading(false); // <-- THIS IS THE CORRECT PLACE
     }
+    // The 'finally' block is removed
   };
 
   return (

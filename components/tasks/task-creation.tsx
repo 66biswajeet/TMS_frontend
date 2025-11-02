@@ -5,6 +5,7 @@ import type React from "react";
 import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import type { RootState } from "@/redux/store";
+import { showError, showSuccess } from "@/lib/toast";
 import {
   Card,
   CardContent,
@@ -531,11 +532,22 @@ export function TaskCreation() {
             : null,
       };
 
-      console.log("Sending task data:", taskData); // Debug log
+      
       await api.post("/tasks", taskData);
+      showSuccess("Task created successfully!");
       router.push("/tasks");
-    } catch (error) {
+    } catch (error:any) {
       console.error("Failed to create task:", error);
+
+      const errorMessage = 
+      error?.response?.data?.error ||  // Backend error message
+      error?.response?.data?.message || // Alternative error field
+      error?.message ||                 // Axios error message
+      "Failed to create task";           // Fallback message
+    
+    showError(errorMessage, {
+      duration: 8000, // Show for 8 seconds since it's an error
+    });
     }
   };
 

@@ -58,6 +58,8 @@ interface Branch {
   GroupName: string;
   IsActive: boolean;
   CreatedAt: string;
+  latitude?: string; // <-- ADD THIS
+  longitude?: string; // <-- ADD THIS
 }
 
 interface User {
@@ -126,11 +128,15 @@ export function BranchesManagement() {
   const [selectedAreaManagerIds, setSelectedAreaManagerIds] = useState<
     string[]
   >([]);
+  const [isFetchingLocation, setIsFetchingLocation] = useState(false); // <-- ADD THIS
   const [formData, setFormData] = useState({
     BranchName: "",
     LocationCode: "",
     GroupName: "",
     IsActive: true,
+    latitude: "", // <-- ADD THIS
+    longitude: "", // <-- ADD THIS
+    radius_meters: "100",
   });
 
   const filteredBranches = branches.filter((branch: any) => {
@@ -534,6 +540,29 @@ export function BranchesManagement() {
     }
   };
 
+  const handleFetchLocation = () => {
+    if (!navigator.geolocation) {
+      showError("Geolocation is not supported by your browser.");
+      return;
+    }
+
+    setIsFetchingLocation(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setFormData((prev) => ({
+          ...prev,
+          latitude: position.coords.latitude.toString(),
+          longitude: position.coords.longitude.toString(),
+        }));
+        setIsFetchingLocation(false);
+        showSuccess("Location fetched successfully!");
+      },
+      (error) => {
+        showError(`Failed to get location: ${error.message}`);
+        setIsFetchingLocation(false);
+      }
+    );
+  };
   const handleCreateBranch = () => {
     setEditingBranch(null);
     setFormData({
@@ -541,6 +570,9 @@ export function BranchesManagement() {
       LocationCode: "",
       GroupName: "",
       IsActive: true,
+      latitude: "", // <-- ADD THIS
+      longitude: "", // <-- ADD THIS
+      radius_meters: "100",
     });
     setIsDialogOpen(true);
   };
@@ -552,6 +584,9 @@ export function BranchesManagement() {
       LocationCode: branch.LocationCode || "",
       GroupName: branch.GroupName || "",
       IsActive: branch.IsActive,
+      latitude: branch.latitude || "", // <-- ADD THIS
+      longitude: branch.longitude || "", // <-- ADD THIS
+      radius_meters: branch.radius_meters?.toString() || "100",
     });
     setIsDialogOpen(true);
   };
@@ -847,6 +882,66 @@ export function BranchesManagement() {
                 }
                 required
               />
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex justify-between items-center">
+                <Label>Branch Location</Label>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleFetchLocation}
+                  disabled={isFetchingLocation}
+                >
+                  <MapPin className="h-3 w-3 mr-1" />
+                  {isFetchingLocation ? "Getting..." : "Get Current Location"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Click the button to auto-fill location if you are at the branch.
+              </p>
+              <div className="flex gap-4">
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="latitude">Latitude</Label>
+                  <Input
+                    id="latitude"
+                    placeholder="e.g. 13.0827"
+                    value={formData.latitude}
+                    onChange={(e) =>
+                      setFormData({ ...formData, latitude: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="flex-1 space-y-2">
+                  <Label htmlFor="longitude">Longitude</Label>
+                  <Input
+                    id="longitude"
+                    placeholder="e.g. 80.2707"
+                    value={formData.longitude}
+                    onChange={(e) =>
+                      setFormData({ ...formData, longitude: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="radius_meters">
+                    Geofence Radius (in meters)
+                  </Label>
+                  <Input
+                    id="radius_meters"
+                    type="number"
+                    placeholder="e.g. 100"
+                    value={formData.radius_meters}
+                    onChange={(e) =>
+                      setFormData({
+                        ...formData,
+                        radius_meters: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              </div>
             </div>
 
             <div className="space-y-2">

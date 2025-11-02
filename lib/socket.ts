@@ -1,107 +1,134 @@
-"use client"
+"use client";
 
-import { useEffect, useRef, useState } from "react"
-import { io, type Socket } from "socket.io-client"
+import { useEffect, useRef, useState } from "react";
+import { io, type Socket } from "socket.io-client";
+import { showNotification } from "@/lib/notifications";
 
-let socket: Socket | null = null
+let socket: Socket | null = null;
 
 export function getSocket(): Socket | null {
-  return socket
+  return socket;
 }
 
 export function initializeSocket(token: string): Socket {
   if (socket?.connected) {
-    return socket
+    return socket;
   }
 
-  socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || 'http://localhost:5050', {
+  socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5050", {
     auth: {
-      token
+      token,
     },
     autoConnect: true,
     reconnection: true,
     reconnectionAttempts: 5,
     reconnectionDelay: 1000,
-  })
+  });
 
-  socket.on('connect', () => {
-    console.log('Socket connected:', socket?.id)
-  })
+  socket.on("connect", () => {
+    console.log("Socket connected:", socket?.id);
+  });
 
-  socket.on('disconnect', (reason) => {
-    console.log('Socket disconnected:', reason)
-  })
+  socket.on("disconnect", (reason) => {
+    console.log("Socket disconnected:", reason);
+  });
 
-  socket.on('connect_error', (error) => {
-    console.error('Socket connection error:', error)
-  })
+  socket.on("connect_error", (error) => {
+    console.error("Socket connection error:", error);
+  });
 
-  return socket
+  // Add these event handlers
+  socket.on("password_reset:request", (data) => {
+    console.log("New password reset request:", data);
+    // Show notification to managers
+    showNotification(
+      "New Password Reset Request",
+      `${data.userName} (${data.userRole}) has requested a password reset`
+    );
+  });
+
+  socket.on("password_reset:approved", (data) => {
+    console.log("Password reset approved:", data);
+    showNotification(
+      "Password Reset Approved",
+      "Your password reset request has been approved. Please check your email for the temporary password."
+    );
+  });
+
+  socket.on("password_reset:rejected", (data) => {
+    console.log("Password reset rejected:", data);
+    showNotification(
+      "Password Reset Rejected",
+      data.reason || "Your password reset request has been rejected."
+    );
+  });
+
+  return socket;
 }
 
 export function disconnectSocket() {
   if (socket) {
-    socket.disconnect()
-    socket = null
+    socket.disconnect();
+    socket = null;
   }
 }
 
 // Hook for using socket in components
 export function useSocket(token?: string) {
-  const [isConnected, setIsConnected] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const socketRef = useRef<Socket | null>(null)
+  const [isConnected, setIsConnected] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (!token) return
+    if (!token) return;
 
     // Initialize socket
-    socketRef.current = initializeSocket(token)
-    const currentSocket = socketRef.current
+    socketRef.current = initializeSocket(token);
+    const currentSocket = socketRef.current;
 
     const onConnect = () => {
-      setIsConnected(true)
-      setError(null)
-    }
+      setIsConnected(true);
+      setError(null);
+    };
 
     const onDisconnect = () => {
-      setIsConnected(false)
-    }
+      setIsConnected(false);
+    };
 
     const onError = (err: Error) => {
-      setError(err.message)
-      setIsConnected(false)
-    }
+      setError(err.message);
+      setIsConnected(false);
+    };
 
-    currentSocket.on('connect', onConnect)
-    currentSocket.on('disconnect', onDisconnect)
-    currentSocket.on('connect_error', onError)
+    currentSocket.on("connect", onConnect);
+    currentSocket.on("disconnect", onDisconnect);
+    currentSocket.on("connect_error", onError);
 
     return () => {
-      currentSocket.off('connect', onConnect)
-      currentSocket.off('disconnect', onDisconnect)
-      currentSocket.off('connect_error', onError)
-    }
-  }, [token])
+      currentSocket.off("connect", onConnect);
+      currentSocket.off("disconnect", onDisconnect);
+      currentSocket.off("connect_error", onError);
+    };
+  }, [token]);
 
   const emit = (event: string, data?: any) => {
     if (socketRef.current?.connected) {
-      socketRef.current.emit(event, data)
+      socketRef.current.emit(event, data);
     }
-  }
+  };
 
   const on = (event: string, handler: (...args: any[]) => void) => {
     if (socketRef.current) {
-      socketRef.current.on(event, handler)
-      return () => socketRef.current?.off(event, handler)
+      socketRef.current.on(event, handler);
+      return () => socketRef.current?.off(event, handler);
     }
-  }
+  };
 
   const off = (event: string, handler?: (...args: any[]) => void) => {
     if (socketRef.current) {
-      socketRef.current.off(event, handler)
+      socketRef.current.off(event, handler);
     }
-  }
+  };
 
   return {
     socket: socketRef.current,
@@ -110,7 +137,7 @@ export function useSocket(token?: string) {
     emit,
     on,
     off,
-  }
+  };
 }
 
 // Room management helpers
@@ -118,12 +145,12 @@ export const rooms = {
   user: (userId: string) => `user:${userId}`,
   role: (roleName: string) => `role:${roleName}`,
   branch: (branchId: string) => `branch:${branchId}`,
-}
+};
 
 export const joinRoom = (room: string) => {
-  socket?.emit('join-room', room)
-}
+  socket?.emit("join-room", room);
+};
 
 export const leaveRoom = (room: string) => {
-  socket?.emit('leave-room', room)
-}
+  socket?.emit("leave-room", room);
+};

@@ -29,12 +29,14 @@ import {
   CartesianGrid, // Ensure this is imported
 } from "recharts";
 
+import { showSuccess, showError } from "@/lib/toast";
 // --- CONFIGURATION ---
 const API_BASE_URL = "http://localhost:5050"; // Use your actual API base URL
 const EXPECTED_WORK_MINUTES = 480; // 8 hours (8 * 60). Used for Overtime calc in graph
 
 // --- TYPES ---
 interface ReportRow {
+  attendanceId: string;
   date: string; // YYYY-MM-DD
   status: "Present" | "Absent" | "Holiday" | "Sunday Holiday" | "On Leave";
   checkIn: string | null; // ISO Date String
@@ -78,19 +80,65 @@ interface ReportSummary {
 }
 
 // --- UTILITY ---
-const fetchApi = async (url: string) => {
+// const fetchApi = async (url: string) => {
+//   const token = localStorage.getItem("token");
+//   if (!token) throw new Error("Authentication token not found.");
+//   const headers = { Authorization: `Bearer ${token}` };
+//   const response = await fetch(`${API_BASE_URL}${url}`, {
+//     headers,
+//     cache: "no-store",
+//   });
+//   if (!response.ok) {
+//     const errorData = await response.json();
+//     throw new Error(errorData.message || `API Error: ${response.statusText}`);
+//   }
+//   try {
+//     return await response.json();
+//   } catch (e) {
+//     if (response.ok) return null; // Handle empty success response
+//     throw new Error(`API Error: ${response.statusText}`);
+//   }
+// };
+
+// --- UTILITY ---
+const fetchApi = async (url: string, options: RequestInit = {}) => {
   const token = localStorage.getItem("token");
   if (!token) throw new Error("Authentication token not found.");
-  const headers = { Authorization: `Bearer ${token}` };
-  const response = await fetch(`${API_BASE_URL}${url}`, { headers });
+
+  // Merge default headers with any custom headers
+  const headers = {
+    Authorization: `Bearer ${token}`,
+    ...options.headers,
+  };
+
+  // Build the full request options
+  const config: RequestInit = {
+    ...options, // This will include method: 'PATCH', body, etc.
+    headers,
+    cache: "no-store",
+  };
+
+  const response = await fetch(`${API_BASE_URL}${url}`, config);
+
   if (!response.ok) {
-    const errorData = await response.json();
+    const errorData = await response.json().catch(() => ({})); // Handle empty error responses
     throw new Error(errorData.message || `API Error: ${response.statusText}`);
   }
+
+  // Handle successful but empty responses (like a PATCH)
+  if (response.status === 200 || response.status === 204) {
+    try {
+      return await response.json();
+    } catch (e) {
+      // This is OK, it just means no JSON body was returned
+      return null;
+    }
+  }
+
   try {
     return await response.json();
   } catch (e) {
-    if (response.ok) return null; // Handle empty success response
+    if (response.ok) return null;
     throw new Error(`API Error: ${response.statusText}`);
   }
 };
@@ -154,6 +202,22 @@ const minutesToHoursMinutes = (minutes: number | null | undefined): string => {
   // Only show minutes if they are > 0 OR if hours are 0 (e.g., 0h 30m)
   if (m > 0 || h === 0) result += `${m}m`;
   return result.trim();
+};
+
+// Formats a date string or Date object for a datetime-local input
+const formatToISOLocal = (isoString: string | null): string => {
+  if (!isoString) return "";
+  try {
+    const date = new Date(isoString);
+    // Adjust for local timezone offset
+    const tzoffset = date.getTimezoneOffset() * 60000; //offset in milliseconds
+    const localISOTime = new Date(date.getTime() - tzoffset)
+      .toISOString()
+      .slice(0, 16);
+    return localISOTime;
+  } catch {
+    return "";
+  }
 };
 
 // --- HELPER for row styling ---
@@ -248,15 +312,34 @@ const UserDetailsCard: React.FC<{
     </div>
   );
 
+  // const formatExpectedTime = (
+  //   timeString: string | null | undefined
+  // ): string => {
+  //   if (!timeString) return "N/A";
+  //   // If backend sends HH:MM:SS, create a dummy date to parse
+  //   if (timeString.match(/^\d{2}:\d{2}:\d{2}$/)) {
+  //     return formatTime(`1970-01-01T${timeString}Z`); // Treat as UTC time part
+  //   }
+  //   return formatTime(timeString); // Assume it's already a full date string
+  // };
+
   const formatExpectedTime = (
     timeString: string | null | undefined
   ): string => {
     if (!timeString) return "N/A";
-    // If backend sends HH:MM:SS, create a dummy date to parse
-    if (timeString.match(/^\d{2}:\d{2}:\d{2}$/)) {
-      return formatTime(`1970-01-01T${timeString}Z`); // Treat as UTC time part
+    try {
+      // timeString is "1970-01-01T23:00:06.000Z"
+      const date = new Date(timeString);
+      // We MUST use UTC methods to get the time as it was sent
+      return date.toLocaleTimeString("en-US", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "UTC", // <-- This forces it to ignore your local timezone
+      });
+    } catch (e) {
+      return "Invalid Time";
     }
-    return formatTime(timeString); // Assume it's already a full date string
   };
 
   return (
@@ -322,10 +405,11 @@ const UserDetailsCard: React.FC<{
 };
 
 // --- Daily Detail Modal Component (Updated with Late/OT) ---
-const DailyDetailModal: React.FC<{ day: ReportRow; onClose: () => void }> = ({
-  day,
-  onClose,
-}) => {
+const DailyDetailModal: React.FC<{
+  day: ReportRow;
+  onClose: () => void;
+  onRefresh: () => void;
+}> = ({ day, onClose, onRefresh }) => {
   const {
     date,
     status,
@@ -339,6 +423,12 @@ const DailyDetailModal: React.FC<{ day: ReportRow; onClose: () => void }> = ({
     overtimeMinutes, // Receive overtimeMinutes
     selfiePhotoUrl,
   } = day;
+
+  const [editingField, setEditingField] = useState<
+    "checkIn" | "checkOut" | null
+  >(null);
+  const [editTime, setEditTime] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
   // Calculate values for the graph
   const overtimeGraphMinutes = Math.max(0, overtimeMinutes); // Use direct overtime value
@@ -373,6 +463,133 @@ const DailyDetailModal: React.FC<{ day: ReportRow; onClose: () => void }> = ({
   const lateStatus = lateMinutes > 0 ? `${lateMinutes}m Late` : null;
   const overtimeStatus =
     overtimeMinutes > 0 ? `${minutesToHoursMinutes(overtimeMinutes)} OT` : null;
+
+  // ... (after const overtimeStatus)
+
+  // --- NEW EDIT HANDLERS ---
+  const handleEditCheckIn = async () => {
+    if (!day.attendanceId) {
+      showError("Cannot edit: Attendance ID is missing.");
+      return;
+    }
+
+    const defaultTime = formatToISOLocal(day.checkIn);
+    const newTimeStr = window.prompt(
+      "Enter new Check-In time (YYYY-MM-DDTHH:MM):",
+      defaultTime
+    );
+
+    if (!newTimeStr) return; // User cancelled
+
+    const newTimeDate = new Date(newTimeStr);
+    if (isNaN(newTimeDate.getTime())) {
+      return showError("Invalid date format.");
+    }
+
+    try {
+      await fetchApi(`/attendance/record/${day.attendanceId}/check-in`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newCheckInTime: newTimeDate.toISOString() }),
+      });
+      showSuccess("Check-In time updated!");
+      onRefresh(); // Refresh the report
+      onClose(); // Close the modal
+    } catch (err: any) {
+      showError(err.message || "Failed to update time.");
+    }
+  };
+
+  const handleEditCheckOut = async () => {
+    if (!day.attendanceId) {
+      showError("Cannot edit: Attendance ID is missing.");
+      return;
+    }
+
+    const defaultTime = formatToISOLocal(day.checkOut);
+    const newTimeStr = window.prompt(
+      "Enter new Check-Out time (YYYY-MM-DDTHH:MM):",
+      defaultTime
+    );
+
+    if (!newTimeStr) return; // User cancelled
+
+    const newTimeDate = new Date(newTimeStr);
+    if (isNaN(newTimeDate.getTime())) {
+      return showError("Invalid date format.");
+    }
+
+    try {
+      await fetchApi(`/attendance/record/${day.attendanceId}/check-out`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ newCheckOutTime: newTimeDate.toISOString() }),
+      });
+      showSuccess("Check-Out time updated!");
+      onRefresh(); // Refresh the report
+      onClose(); // Close the modal
+    } catch (err: any) {
+      showError(err.message || "Failed to update time.");
+    }
+  };
+  // --- END NEW EDIT HANDLERS ---
+
+  // --- NEW EDIT HANDLERS ---
+
+  // Function to START editing
+  const startEdit = (field: "checkIn" | "checkOut") => {
+    setEditingField(field);
+    // Use the correct time for the field being edited
+    const timeToEdit = field === "checkIn" ? day.checkIn : day.checkOut;
+    setEditTime(formatToISOLocal(timeToEdit)); // formatToISOLocal is already in your file
+  };
+
+  // Function to CANCEL editing
+  const cancelEdit = () => {
+    setEditingField(null);
+    setEditTime("");
+  };
+
+  // Function to SAVE the edit
+  const saveEdit = async () => {
+    if (!editingField || !day.attendanceId) {
+      showError("Cannot save: Unknown error.");
+      return;
+    }
+
+    const newTimeDate = new Date(editTime);
+    if (isNaN(newTimeDate.getTime())) {
+      return showError("Invalid date format.");
+    }
+
+    // Determine which API endpoint and body to use
+    const endpoint =
+      editingField === "checkIn"
+        ? `/attendance/record/${day.attendanceId}/check-in`
+        : `/attendance/record/${day.attendanceId}/check-out`;
+
+    const body =
+      editingField === "checkIn"
+        ? { newCheckInTime: newTimeDate.toISOString() }
+        : { newCheckOutTime: newTimeDate.toISOString() };
+
+    setIsSaving(true);
+    try {
+      await fetchApi(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      showSuccess(`Time updated successfully!`);
+      onRefresh(); // Refresh the report
+      onClose(); // Close the modal
+    } catch (err: any) {
+      showError(err.message || "Failed to update time.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+  // --- END NEW EDIT HANDLERS ---
 
   return (
     // Modal backdrop
@@ -463,12 +680,105 @@ const DailyDetailModal: React.FC<{ day: ReportRow; onClose: () => void }> = ({
                   <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
                   Timestamps
                 </h3>
+
                 <dl className="divide-y divide-gray-200 border rounded-lg overflow-hidden bg-white">
-                  <DetailRow label="Check In" value={formatTime(checkIn)} />
+                  {/* --- Check In Row --- */}
+                  <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 items-center px-4">
+                    <dt className="text-sm font-medium text-gray-500">
+                      Check In
+                    </dt>
+                    <dd className="mt-1 text-sm sm:mt-0 sm:col-span-2 font-semibold">
+                      {editingField === "checkIn" ? (
+                        // EDIT MODE
+                        <div className="flex gap-2">
+                          <input
+                            type="datetime-local"
+                            value={editTime}
+                            onChange={(e) => setEditTime(e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        // DISPLAY MODE
+                        <div className="flex items-center justify-between">
+                          <span>{formatTime(checkIn)}</span>
+                          <button
+                            onClick={() => startEdit("checkIn")}
+                            className="p-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
+                            title="Edit Check-In Time"
+                          >
+                            <Briefcase className="w-3 h-3" />{" "}
+                            {/* Replace with Edit icon if you have it */}
+                          </button>
+                        </div>
+                      )}
+                    </dd>
+                  </div>
+
+                  {/* --- Break In Row (No Edit) --- */}
                   <DetailRow label="Break In" value={formatTime(breakIn)} />
+
+                  {/* --- Break Out Row (No Edit) --- */}
                   <DetailRow label="Break Out" value={formatTime(breakOut)} />
-                  <DetailRow label="Check Out" value={formatTime(checkOut)} />
+
+                  {/* --- Check Out Row --- */}
+                  <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 items-center px-4">
+                    <dt className="text-sm font-medium text-gray-500">
+                      Check Out
+                    </dt>
+                    <dd className="mt-1 text-sm sm:mt-0 sm:col-span-2 font-semibold">
+                      {editingField === "checkOut" ? (
+                        // EDIT MODE
+                        <div className="flex gap-2">
+                          <input
+                            type="datetime-local"
+                            value={editTime}
+                            onChange={(e) => setEditTime(e.target.value)}
+                            className="w-full px-2 py-1 border border-gray-300 rounded-md text-sm"
+                            autoFocus
+                          />
+                        </div>
+                      ) : (
+                        // DISPLAY MODE
+                        <div className="flex items-center justify-between">
+                          <span>{formatTime(checkOut)}</span>
+                          <button
+                            onClick={() => startEdit("checkOut")}
+                            className="p-1 text-xs text-blue-600 hover:bg-blue-100 rounded"
+                            title="Edit Check-Out Time"
+                          >
+                            <Briefcase className="w-3 h-3" />{" "}
+                            {/* Replace with Edit icon if you have it */}
+                          </button>
+                        </div>
+                      )}
+                    </dd>
+                  </div>
                 </dl>
+
+                {/* --- NEW Save/Cancel Buttons --- */}
+                {editingField && (
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      onClick={cancelEdit}
+                      className="flex-1 py-2 px-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      onClick={saveEdit}
+                      disabled={isSaving}
+                      className="flex-1 py-2 px-3 text-sm font-medium text-white bg-indigo-600 rounded-md hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-4 h-4 animate-spin mx-auto" />
+                      ) : (
+                        "Save"
+                      )}
+                    </button>
+                  </div>
+                )}
               </div>
 
               {/* Right Side: Graph */}
@@ -952,6 +1262,7 @@ const UserAttendanceReport = () => {
         <DailyDetailModal
           day={selectedDay}
           onClose={() => setSelectedDay(null)}
+          onRefresh={fetchReport}
         />
       )}
     </div>

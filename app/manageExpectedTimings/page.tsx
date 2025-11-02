@@ -18,6 +18,8 @@ import {
   CalendarDays,
   Sun,
 } from "lucide-react";
+import { Label } from "@/components/ui/label"; // <-- ADD THIS
+import { Input } from "@/components/ui/input";
 
 // --- CONFIGURATION ---
 const API_BASE_URL = "http://localhost:5050"; // <-- REMOVED /api prefix
@@ -34,14 +36,23 @@ interface UserSummary {
   branch?: string;
 }
 
+// interface ExpectedTimings {
+//   UserId: string;
+//   ExpectedCheckIn: string;
+//   ExpectedCheckOut: string;
+//   ExpectedBreakIn: string | null;
+//   ExpectedBreakOut: string | null;
+// }
+
 interface ExpectedTimings {
   UserId: string;
   ExpectedCheckIn: string;
   ExpectedCheckOut: string;
   ExpectedBreakIn: string | null;
   ExpectedBreakOut: string | null;
+  OffDaysMask: number; // <-- ADD THIS
+  GracePeriodMinutes: number;
 }
-
 // NEW TYPE for availability
 interface UserAvailability {
   isAvailable: boolean;
@@ -155,12 +166,21 @@ const ConfigModal: React.FC<{
   const [error, setError] = useState<string | null>(null);
 
   // State for Timings
+  // const [timingsData, setTimingsData] = useState<ExpectedTimings>({
+  //   UserId: user.id,
+  //   ExpectedCheckIn: "09:00:00",
+  //   ExpectedCheckOut: "18:00:00",
+  //   ExpectedBreakIn: null,
+  //   ExpectedBreakOut: null,
+  // });
   const [timingsData, setTimingsData] = useState<ExpectedTimings>({
     UserId: user.id,
     ExpectedCheckIn: "09:00:00",
     ExpectedCheckOut: "18:00:00",
     ExpectedBreakIn: null,
     ExpectedBreakOut: null,
+    OffDaysMask: 1, // <-- ADD THIS (Default to 1 for Sunday)
+    GracePeriodMinutes: 10,
   });
 
   // NEW State for Availability
@@ -181,10 +201,27 @@ const ConfigModal: React.FC<{
         const data = await fetchApi(`/users/${user.id}/configuration`);
 
         // Set timings data
+        //  {
+        //   setTimingsData({
+        //     UserId: user.id,
+        //     // USE THE FORMATTER HERE
+        //     ExpectedCheckIn:
+        //       formatTimeForInput(data.expectedTimings.ExpectedCheckIn) ||
+        //       "09:00:00",
+        //     ExpectedCheckOut:
+        //       formatTimeForInput(data.expectedTimings.ExpectedCheckOut) ||
+        //       "18:00:00",
+        //     ExpectedBreakIn:
+        //       formatTimeForInput(data.expectedTimings.ExpectedBreakIn) || null,
+        //     ExpectedBreakOut:
+        //       formatTimeForInput(data.expectedTimings.ExpectedBreakOut) || null,
+        //   });
+        // }
+
+        // Set timings data
         if (data.expectedTimings) {
           setTimingsData({
             UserId: user.id,
-            // USE THE FORMATTER HERE
             ExpectedCheckIn:
               formatTimeForInput(data.expectedTimings.ExpectedCheckIn) ||
               "09:00:00",
@@ -195,6 +232,9 @@ const ConfigModal: React.FC<{
               formatTimeForInput(data.expectedTimings.ExpectedBreakIn) || null,
             ExpectedBreakOut:
               formatTimeForInput(data.expectedTimings.ExpectedBreakOut) || null,
+            // ADD THIS LINE: Use existing mask, or default to 1 (Sunday)
+            OffDaysMask: data.expectedTimings.OffDaysMask ?? 1,
+            GracePeriodMinutes: data.expectedTimings.GracePeriodMinutes ?? 10,
           });
         }
 
@@ -209,7 +249,7 @@ const ConfigModal: React.FC<{
           });
         }
       } catch (err: any) {
-        console.error("Failed to fetch configuration:", err);
+        console.error("Failed to fetch configuration:", err); // <-- CORRECTED
         setError(
           "Could not load existing configuration. Using default values."
         );
@@ -247,6 +287,31 @@ const ConfigModal: React.FC<{
     });
   };
 
+  const handleDayToggle = (dayIndex: number) => {
+    // dayIndex: 0=Sun, 1=Mon, ..., 6=Sat
+    setTimingsData((prev) => {
+      const currentMask = prev.OffDaysMask;
+      const dayBit = 1 << dayIndex; // This creates the bit for the day
+
+      // Check if the day is currently an off day
+      const isSet = (currentMask & dayBit) !== 0;
+
+      let newMask;
+      if (isSet) {
+        // Day is set, so turn it OFF (remove from mask)
+        newMask = currentMask & ~dayBit;
+      } else {
+        // Day is not set, so turn it ON (add to mask)
+        newMask = currentMask | dayBit;
+      }
+
+      return {
+        ...prev,
+        OffDaysMask: newMask,
+      };
+    });
+  };
+
   // UPDATED Save Handler (saves to two endpoints)
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -277,7 +342,13 @@ const ConfigModal: React.FC<{
   // --- Reusable Input Components ---
   const TimeInput: React.FC<{
     label: string;
-    name: keyof ExpectedTimings;
+    // name: keyof ExpectedTimings;
+    // required?: boolean;
+    name:
+      | "ExpectedCheckIn"
+      | "ExpectedCheckOut"
+      | "ExpectedBreakIn"
+      | "ExpectedBreakOut";
     required?: boolean;
   }> = ({ label, name, required = false }) => (
     <div className="flex-1 min-w-0">
@@ -300,7 +371,8 @@ const ConfigModal: React.FC<{
 
   const DateInput: React.FC<{
     label: string;
-    name: keyof UserAvailability;
+    // name: keyof UserAvailability;
+    name: "leaveStartDate" | "leaveEndDate";
   }> = ({ label, name }) => (
     <div className="flex-1 min-w-0">
       <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -383,6 +455,78 @@ const ConfigModal: React.FC<{
                   />
                 </div>
               </div>
+
+              {/* === ADD THIS NEW SECTION === */}
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                  <CalendarDays className="w-4 h-4 mr-2 text-green-500" />
+                  Weekly Off Days
+                </h3>
+                <p className="text-sm text-gray-600">
+                  Select the days the user is not expected to work.
+                </p>
+                <div className="flex flex-wrap gap-3 pt-2">
+                  {[
+                    "Sun", // 0
+                    "Mon", // 1
+                    "Tue", // 2
+                    "Wed", // 3
+                    "Thu", // 4
+                    "Fri", // 5
+                    "Sat", // 6
+                  ].map((day, index) => {
+                    const isChecked =
+                      (timingsData.OffDaysMask & (1 << index)) !== 0;
+                    return (
+                      <button
+                        type="button" // Prevents form submission
+                        key={day}
+                        onClick={() => handleDayToggle(index)}
+                        disabled={loading || saving}
+                        className={`
+                          w-12 h-12 rounded-full font-medium transition
+                          flex items-center justify-center
+                          border-2
+                          ${
+                            isChecked
+                              ? "bg-indigo-600 text-white border-indigo-600"
+                              : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                          }
+                          disabled:opacity-50
+                        `}
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              {/* === END NEW SECTION === */}
+
+              {/* === ADD THIS NEW GRACE PERIOD SECTION === */}
+              <div className="space-y-2">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 flex items-center">
+                  <Clock className="w-4 h-4 mr-2 text-blue-500" />
+                  Grace Period
+                </h3>
+                <Label htmlFor="GracePeriodMinutes">
+                  Late / Overtime Buffer (in minutes)
+                </Label>
+                <Input
+                  id="GracePeriodMinutes"
+                  type="number"
+                  value={timingsData.GracePeriodMinutes}
+                  onChange={(e) =>
+                    setTimingsData({
+                      ...timingsData,
+                      GracePeriodMinutes: parseInt(e.target.value) || 0,
+                    })
+                  }
+                  className="w-full"
+                  placeholder="e.g., 10"
+                />
+              </div>
+              {/* === END NEW SECTION === */}
 
               {/* === NEW Availability & Leave Section === */}
               <div className="space-y-4">

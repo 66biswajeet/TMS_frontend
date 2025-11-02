@@ -8,8 +8,23 @@ import { Input } from "@/components/ui/input";
 import { useRouter } from "next/navigation";
 import { useDispatch } from "react-redux";
 import { login } from "@/redux/modules/auth/actions";
+// ... other imports
+
+// <-- ADD THIS IMPORT
 // You'll need a way to make authenticated API calls.
 import { api } from "@/lib/axios";
+
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
+import { showSuccess, showError } from "@/lib/toast";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("demo@marinapharma.com");
@@ -18,6 +33,13 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [showResetInfo, setShowResetInfo] = useState(false);
+
+  const [showPasswordResetForm, setShowPasswordResetForm] = useState(false);
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetMessage, setResetMessage] = useState("");
+  const [isSubmittingReset, setIsSubmittingReset] = useState(false);
+  const [resetSuccess, setResetSuccess] = useState("");
+
   const router = useRouter();
   const dispatch = useDispatch();
 
@@ -25,6 +47,49 @@ export default function LoginPage() {
   const [showBranchSelector, setShowBranchSelector] = useState(false);
   const [assignedBranches, setAssignedBranches] = useState<any[]>([]);
   const [tempUserData, setTempUserData] = useState<any>(null);
+
+  const handlePasswordResetRequest = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmittingReset(true);
+    setError("");
+    setResetSuccess("");
+
+    try {
+      const response = await fetch(
+        `${
+          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050"
+        }/password-reset-requests/request`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            email: resetEmail,
+            message: resetMessage,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (data.success) {
+        // setResetSuccess(data.message);
+        showSuccess(data.message);
+        setResetEmail("");
+        setResetMessage("");
+        setShowPasswordResetForm(false);
+      } else {
+        // setError(data.message);
+        showError(data.message);
+      }
+    } catch (err: any) {
+      console.error("Password reset request error:", err);
+      setError("Failed to submit password reset request. Please try again.");
+    } finally {
+      setIsSubmittingReset(false);
+    }
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -292,7 +357,7 @@ export default function LoginPage() {
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-3">
+                {/* <div className="flex items-center justify-between mb-3">
                   <label
                     htmlFor="password"
                     className="block text-sm font-semibold text-gray-700"
@@ -302,6 +367,24 @@ export default function LoginPage() {
                   <button
                     type="button"
                     onClick={() => setShowResetInfo(!showResetInfo)} // Toggle info visibility
+                    className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
+                  >
+                    Forgot password?
+                  </button>
+                </div> */}
+
+                <div className="flex items-center justify-between mb-3">
+                  <label
+                    htmlFor="password"
+                    className="block text-sm font-semibold text-gray-700"
+                  >
+                    Password
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPasswordResetForm(!showPasswordResetForm)
+                    }
                     className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
                   >
                     Forgot password?
@@ -317,6 +400,7 @@ export default function LoginPage() {
                     placeholder="Enter your password"
                     required
                   />
+
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
@@ -376,6 +460,99 @@ export default function LoginPage() {
                 )}
               </Button>
             </form>
+
+            {showPasswordResetForm && (
+              <Card className="mt-4">
+                <CardHeader>
+                  <CardTitle className="text-lg">
+                    Request Password Reset
+                  </CardTitle>
+                  <CardDescription>
+                    Enter your email address and we'll send your request to
+                    management for approval.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {/* {resetSuccess && (
+                    <Alert className="mb-4 border-green-200 bg-green-50">
+                      <AlertDescription className="text-green-800">
+                        {resetSuccess}
+                      </AlertDescription>
+                    </Alert>
+                  )} */}
+                  {resetSuccess && (
+                    <Alert className="mb-4 border-green-200 bg-green-50">
+                      <AlertDescription className="text-green-800">
+                        {resetSuccess}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+
+                  <form
+                    onSubmit={handlePasswordResetRequest}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <Label htmlFor="resetEmail">Email Address</Label>
+                      <Input
+                        id="resetEmail"
+                        type="email"
+                        value={resetEmail}
+                        onChange={(e) => setResetEmail(e.target.value)}
+                        placeholder="Enter your email address"
+                        required
+                        className="mt-1"
+                      />
+                    </div>
+
+                    <div>
+                      <Label htmlFor="resetMessage">
+                        Additional Message (Optional)
+                      </Label>
+                      <Textarea
+                        id="resetMessage"
+                        value={resetMessage}
+                        onChange={(e) => setResetMessage(e.target.value)}
+                        placeholder="Any additional information for management..."
+                        className="mt-1"
+                        rows={3}
+                      />
+                    </div>
+
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={() => {
+                          setShowPasswordResetForm(false);
+                          setResetEmail("");
+                          setResetMessage("");
+                          setError("");
+                          setResetSuccess("");
+                        }}
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="submit"
+                        disabled={isSubmittingReset}
+                        className="flex-1"
+                      >
+                        {isSubmittingReset ? (
+                          <>
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2"></div>
+                            Submitting...
+                          </>
+                        ) : (
+                          "Submit Request"
+                        )}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            )}
           </div>
         </div>
       </div>
