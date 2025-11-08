@@ -28,6 +28,7 @@ import {
   Cell,
   CartesianGrid, // Ensure this is imported
 } from "recharts";
+import { SafeImage } from "@/components/ui/SafeImage";
 
 import { showSuccess, showError } from "@/lib/toast";
 // --- CONFIGURATION ---
@@ -823,24 +824,18 @@ const DailyDetailModal: React.FC<{
                   <User className="w-4 h-4 mr-2 text-indigo-500" />
                   Check-in Selfie
                 </h3>
-                <div className="w-full aspect-square bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
-                  {selfiePhotoUrl ? (
-                    <img
-                      src={selfiePhotoUrl}
-                      alt="Check-in Selfie"
-                      className="w-full h-full object-cover"
-                      // Add error handling
-                      onError={(e) =>
-                        (e.currentTarget.src =
-                          "https://placehold.co/300x300/EFEFEF/CCCCCC?text=No+Image")
-                      }
-                    />
-                  ) : (
-                    <span className="text-gray-400 text-sm">
-                      No Selfie Available
-                    </span>
-                  )}
-                </div>
+                <SafeImage
+                  src={selfiePhotoUrl}
+                  alt="Check-in Selfie"
+                  className="w-full aspect-square bg-gray-100 border border-gray-200 rounded-lg overflow-hidden"
+                  fallback={
+                    <div className="w-full aspect-square bg-gray-100 border border-gray-200 rounded-lg overflow-hidden flex items-center justify-center">
+                      <span className="text-gray-400 text-sm">
+                        No Selfie Available
+                      </span>
+                    </div>
+                  }
+                />
               </div>
               {/* === END Selfie Section === */}
             </div>

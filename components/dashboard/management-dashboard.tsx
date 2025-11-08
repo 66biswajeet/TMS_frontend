@@ -54,6 +54,7 @@ import {
 
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { toPng } from "html-to-image";
 import {
   Document,
   Packer,
@@ -74,6 +75,8 @@ import { HeatTable } from "./heat-table";
 import { DrillChart } from "./drill-chart";
 import { FilterPanel } from "./filter-panel";
 import { BranchPerformancePanel } from "./branch-performance-panel";
+
+import { useReactToPrint } from "react-to-print";
 
 interface DashboardKPIs {
   TasksCreated: number;
@@ -128,6 +131,7 @@ export const ManagementDashboard: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [filters, setFilters] = useState<any>({});
   const [activeTab, setActiveTab] = useState("overview");
+  const [isGeneratingPdf, setIsGeneratingPdf] = useState(false);
 
   // Fetch dashboard data using TMS axios - SCALABLE FOR ANY NUMBER OF BRANCHES
   const fetchDashboardData = useCallback(async (currentFilters: any = {}) => {
@@ -586,95 +590,282 @@ export const ManagementDashboard: React.FC = () => {
   //   }
   // };
 
-  const handleExportPDF = async () => {
+  // const handleExportPDF = async () => {
+  //   try {
+  //     const input = document.getElementById("management-dashboard-content");
+  //     if (!input) {
+  //       console.error(
+  //         "Could not find dashboard content element for PDF export."
+  //       );
+  //       return;
+  //     }
+
+  //     console.log("🔄 Generating PDF with SVG 'class' removal fix...");
+
+  //     // 1. Use html2canvas to render the HTML element as a canvas
+  //     const canvas = await html2canvas(input, {
+  //       scale: 2,
+  //       useCORS: true,
+  //       // Add a simple white background as a fallback
+  //       backgroundColor: "#ffffff",
+
+  //       // 'onclone' runs on the *cloned* document before rendering
+  //       onclone: (clonedDoc) => {
+  //         // Select every single element in the cloned document
+  //         const elements = clonedDoc.querySelectorAll("*");
+
+  //         elements.forEach((el) => {
+  //           const htmlEl = el as HTMLElement;
+  //           const tagName = htmlEl.tagName.toLowerCase();
+
+  //           // --- THIS IS THE NEW FIX ---
+  //           // Check if the element is an SVG or an SVG child
+  //           const isSvgElement = [
+  //             "svg",
+  //             "path",
+  //             "rect",
+  //             "circle",
+  //             "line",
+  //             "polygon",
+  //             "polyline",
+  //             "text",
+  //             "g",
+  //           ].includes(tagName);
+
+  //           if (isSvgElement) {
+  //             // 1. Remove the 'class' attribute completely.
+  //             // This is the attribute that links to the oklch color in the stylesheet.
+  //             htmlEl.removeAttribute("class");
+
+  //             // 2. Force a simple, safe inline style as a fallback.
+  //             htmlEl.style.fill = "black";
+  //             htmlEl.style.stroke = "none";
+  //           }
+  //           // --- END OF NEW FIX ---
+
+  //           // General fix for non-SVG elements
+  //           htmlEl.style.backgroundColor = "white";
+  //           htmlEl.style.color = "black";
+  //           htmlEl.style.borderColor = "black";
+  //           htmlEl.style.boxShadow = "none";
+  //         });
+  //       },
+  //     });
+
+  //     // 2. Generate and Save PDF (Existing Logic)
+  //     const imgData = canvas.toDataURL("image/png");
+  //     const pdf = new jsPDF("p", "mm", "a4");
+
+  //     const imgWidth = 210;
+  //     const pageHeight = 295;
+  //     const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  //     let heightLeft = imgHeight;
+  //     let position = 0;
+
+  //     pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //     heightLeft -= pageHeight;
+
+  //     while (heightLeft >= -1) {
+  //       position = heightLeft - imgHeight;
+  //       pdf.addPage();
+  //       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //       heightLeft -= pageHeight;
+  //     }
+
+  //     const fileName = `management-dashboard-${
+  //       new Date().toISOString().split("T")[0]
+  //     }.pdf`;
+  //     pdf.save(fileName);
+  //     console.log(`✅ PDF file saved.`);
+  //   } catch (err) {
+  //     console.error("Export error (PDF generation failed):", err);
+  //   }
+  // };
+
+  // const handleExportPDF = async () => {
+  //   const input = document.getElementById("management-dashboard-content");
+  //   if (!input) {
+  //     console.error("Could not find dashboard content element for PDF export.");
+  //     return;
+  //   }
+
+  //   setIsGeneratingPdf(true); // Start loader
+  //   console.log("🔄 Generating PDF with full 'oklch' style stripping...");
+
+  //   // Wrap in setTimeout to fix React 19 race condition
+  //   setTimeout(async () => {
+  //     try {
+  //       const canvas = await html2canvas(input, {
+  //         scale: 2, // Better quality
+  //         useCORS: true, // For external images
+  //         backgroundColor: "#ffffff", // Set a white background for the canvas
+
+  //         // --- ✅ THIS IS THE NEW 'oklch' FIX ---
+  //         // This 'onclone' function runs on the cloned document.
+  //         // It removes *all* class attributes to prevent 'oklch'
+  //         // errors from any element (divs, cards, icons, etc.).
+  //         onclone: (clonedDoc) => {
+  //           // Select *every single element*
+  //           const allElements = clonedDoc.querySelectorAll("*");
+
+  //           allElements.forEach((el) => {
+  //             const htmlEl = el as HTMLElement;
+  //             const tagName = htmlEl.tagName.toLowerCase();
+
+  //             // 1. Remove the class attribute completely.
+  //             // This is the root cause of the 'oklch' error.
+  //             htmlEl.removeAttribute("class");
+
+  //             // 2. Apply basic fallback styles based on element type
+  //             if (
+  //               [
+  //                 "svg",
+  //                 "path",
+  //                 "rect",
+  //                 "circle",
+  //                 "line",
+  //                 "polygon",
+  //                 "polyline",
+  //                 "text",
+  //                 "g",
+  //               ].includes(tagName)
+  //             ) {
+  //               // It's an SVG or its child element:
+  //               // Set fill/stroke to black so it's visible.
+  //               htmlEl.style.fill = "black";
+  //               htmlEl.style.stroke = "none";
+  //               htmlEl.style.color = "black"; // for <text>
+  //             } else {
+  //               // It's a regular HTML element (div, p, span, card):
+  //               // Set a white background and black text.
+  //               htmlEl.style.backgroundColor = "white";
+  //               htmlEl.style.color = "black";
+  //               htmlEl.style.borderColor = "black"; // Makes cards/tables visible
+  //               htmlEl.style.boxShadow = "none"; // Remove shadows
+  //             }
+  //           });
+  //         },
+  //       });
+
+  //       // --- Your PDF generation logic (which is correct) ---
+  //       const imgData = canvas.toDataURL("image/png");
+  //       const pdf = new jsPDF("p", "mm", "a4");
+
+  //       const imgWidth = 210;
+  //       const pageHeight = 295;
+  //       const imgHeight = (canvas.height * imgWidth) / canvas.width;
+  //       let heightLeft = imgHeight;
+  //       let position = 0;
+
+  //       pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //       heightLeft -= pageHeight;
+
+  //       while (heightLeft >= -1) {
+  //         position = heightLeft - imgHeight;
+  //         pdf.addPage();
+  //         pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  //         heightLeft -= pageHeight;
+  //       }
+
+  //       const fileName = `management-dashboard-${
+  //         new Date().toISOString().split("T")[0]
+  //       }.pdf`;
+  //       pdf.save(fileName);
+  //       console.log(`✅ PDF file saved.`);
+  //     } catch (err) {
+  //       console.error("Export error (PDF generation failed):", err);
+  //     } finally {
+  //       setIsGeneratingPdf(false); // Stop loader, even if it fails
+  //     }
+  //   }, 0); // A 0ms delay is all that's needed
+  // };
+
+  // REPLACE your old handlePrint hook with this one
+  const handlePrint = useReactToPrint({
+    content: () => {
+      // This function runs when the user clicks the "Print" button.
+      // It will find your dashboard content by its ID.
+      return document.getElementById("management-dashboard-content");
+    },
+    documentTitle: `management-dashboard-${
+      new Date().toISOString().split("T")[0]
+    }`,
+    onBeforeGetContent: () => {
+      setIsGeneratingPdf(true); // Show loader
+      console.log("🔄 Preparing print...");
+    },
+    onAfterPrint: () => {
+      setIsGeneratingPdf(false); // Hide loader
+      console.log("✅ Print dialog closed.");
+    },
+    removeAfterPrint: true, // Helps with compatibility
+  });
+
+  //  for Word export
+  const handleExportWord = async () => {
     try {
-      const input = document.getElementById("management-dashboard-content");
-      if (!input) {
-        console.error(
-          "Could not find dashboard content element for PDF export."
-        );
-        return;
-      }
+      console.log("🔄 Generating Word document...");
 
-      console.log("🔄 Generating PDF with SVG 'class' removal fix...");
-
-      // 1. Use html2canvas to render the HTML element as a canvas
-      const canvas = await html2canvas(input, {
-        scale: 2,
-        useCORS: true,
-        // Add a simple white background as a fallback
-        backgroundColor: "#ffffff",
-
-        // 'onclone' runs on the *cloned* document before rendering
-        onclone: (clonedDoc) => {
-          // Select every single element in the cloned document
-          const elements = clonedDoc.querySelectorAll("*");
-
-          elements.forEach((el) => {
-            const htmlEl = el as HTMLElement;
-            const tagName = htmlEl.tagName.toLowerCase();
-
-            // --- THIS IS THE NEW FIX ---
-            // Check if the element is an SVG or an SVG child
-            const isSvgElement = [
-              "svg",
-              "path",
-              "rect",
-              "circle",
-              "line",
-              "polygon",
-              "polyline",
-              "text",
-              "g",
-            ].includes(tagName);
-
-            if (isSvgElement) {
-              // 1. Remove the 'class' attribute completely.
-              // This is the attribute that links to the oklch color in the stylesheet.
-              htmlEl.removeAttribute("class");
-
-              // 2. Force a simple, safe inline style as a fallback.
-              htmlEl.style.fill = "black";
-              htmlEl.style.stroke = "none";
-            }
-            // --- END OF NEW FIX ---
-
-            // General fix for non-SVG elements
-            htmlEl.style.backgroundColor = "white";
-            htmlEl.style.color = "black";
-            htmlEl.style.borderColor = "black";
-            htmlEl.style.boxShadow = "none";
-          });
-        },
+      // Create a new document
+      const doc = new Document({
+        sections: [
+          {
+            properties: {},
+            children: [
+              new Paragraph({
+                children: [
+                  new TextRun("Management Dashboard Report"),
+                  new TextRun({
+                    text: new Date().toLocaleDateString(),
+                    break: 1,
+                  }),
+                ],
+              }),
+            ],
+          },
+        ],
       });
 
-      // 2. Generate and Save PDF (Existing Logic)
-      const imgData = canvas.toDataURL("image/png");
-      const pdf = new jsPDF("p", "mm", "a4");
-
-      const imgWidth = 210;
-      const pageHeight = 295;
-      const imgHeight = (canvas.height * imgWidth) / canvas.width;
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft >= -1) {
-        position = heightLeft - imgHeight;
-        pdf.addPage();
-        pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-
+      // Generate and save the document
+      const buffer = await Packer.toBlob(doc);
       const fileName = `management-dashboard-${
         new Date().toISOString().split("T")[0]
-      }.pdf`;
-      pdf.save(fileName);
-      console.log(`✅ PDF file saved.`);
+      }.docx`;
+      saveAs(buffer, fileName);
+
+      console.log("✅ Word file saved.");
     } catch (err) {
-      console.error("Export error (PDF generation failed):", err);
+      console.error("Export error (Word):", err);
+    }
+  };
+
+  // Add PDF export function using html-to-image
+  const handleExportPDF = async () => {
+    try {
+      setIsGeneratingPdf(true);
+      const element = document.getElementById("management-dashboard-content");
+      if (!element) throw new Error("Content element not found");
+
+      const png = await toPng(element, {
+        quality: 0.95,
+        backgroundColor: "white",
+      });
+
+      const pdf = new jsPDF();
+      const imgProps = pdf.getImageProperties(png);
+      const pdfWidth = pdf.internal.pageSize.getWidth();
+      const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+
+      pdf.addImage(png, "PNG", 0, 0, pdfWidth, pdfHeight);
+      pdf.save(
+        `management-dashboard-${new Date().toISOString().split("T")[0]}.pdf`
+      );
+
+      console.log("✅ PDF saved successfully");
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      setIsGeneratingPdf(false);
     }
   };
 
@@ -862,15 +1053,26 @@ export const ManagementDashboard: React.FC = () => {
               <DropdownMenuLabel>Choose Export Format</DropdownMenuLabel>
               <DropdownMenuSeparator />
 
-              {/* 1. PDF Option */}
-              <DropdownMenuItem onClick={handleExportPDF}>
-                <FileText className="mr-2 h-4 w-4" />
-                PDF Document (.pdf)
+              {/* 1. REPLACE the old PDF item with this one */}
+              <DropdownMenuItem
+                onClick={handleExportPDF}
+                disabled={isGeneratingPdf}
+              >
+                {isGeneratingPdf ? (
+                  <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <FileText className="mr-2 h-4 w-4" />
+                )}
+                {isGeneratingPdf ? "Preparing..." : "PDF Document (.pdf)"}
               </DropdownMenuItem>
 
-              {/* 2. Word Option */}
+              {/* 2. ADD this new Word item */}
+              <DropdownMenuItem onClick={handleExportWord}>
+                <FileText className="mr-2 h-4 w-4" />
+                Word Document (.docx)
+              </DropdownMenuItem>
 
-              {/* 3. Excel/CSV Option */}
+              {/* 3. Your existing CSV item (leave as-is) */}
               <DropdownMenuItem onClick={handleExportCSV}>
                 <Sheet className="mr-2 h-4 w-4" />
                 Excel/CSV (.csv)

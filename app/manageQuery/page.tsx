@@ -42,6 +42,8 @@ interface Query {
   ResolutionNotes: string | null;
   UserName?: string;
   UserStaffId?: string;
+  FullName?: string; // <-- add this
+  StaffId?: string; // <-- add this (or StaffId/StaffID depending on backend)
 }
 
 // Enhanced Button Component
