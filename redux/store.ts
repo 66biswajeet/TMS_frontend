@@ -30,6 +30,13 @@ export type RootState = ReturnType<typeof rootReducer>;
 
 const composeEnhancers =
   (typeof window !== "undefined" &&
-    (window as any).__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) || compose;
+    (window as any).__REDUX_DEVTOOLS_EXTENSION_COMPOSE__) ||
+  compose;
 
-export const store = createStore(rootReducer, composeEnhancers(applyMiddleware(thunk)));
+export const store = createStore(
+  rootReducer,
+  composeEnhancers(applyMiddleware(thunk))
+);
+
+// Export AppDispatch type for typed useDispatch in components
+export type AppDispatch = typeof store.dispatch;

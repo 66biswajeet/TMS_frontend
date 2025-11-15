@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
 import { showNotification } from "@/lib/notifications";
+import { taskMonitor } from "./task-monitor";
 
 let socket: Socket | null = null;
 
@@ -15,7 +16,7 @@ export function initializeSocket(token: string): Socket {
     return socket;
   }
 
-  socket = io(process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:5050", {
+  socket = io(process.env.NEXT_PUBLIC_API_BASE_URL, {
     auth: {
       token,
     },
@@ -27,6 +28,8 @@ export function initializeSocket(token: string): Socket {
 
   socket.on("connect", () => {
     console.log("Socket connected:", socket?.id);
+    // Start task monitoring when socket connects
+    taskMonitor.start();
   });
 
   socket.on("disconnect", (reason) => {

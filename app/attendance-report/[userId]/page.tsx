@@ -31,8 +31,11 @@ import {
 import { SafeImage } from "@/components/ui/SafeImage";
 
 import { showSuccess, showError } from "@/lib/toast";
-// --- CONFIGURATION ---
-const API_BASE_URL = "http://localhost:5050"; // Use your actual API base URL
+
+// const API_BASE_URL = "http://localhost:5050";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+
+// Use your actual API base URL
 const EXPECTED_WORK_MINUTES = 480; // 8 hours (8 * 60). Used for Overtime calc in graph
 
 // --- TYPES ---
@@ -431,19 +434,20 @@ const DailyDetailModal: React.FC<{
   const [editTime, setEditTime] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Calculate values for the graph
-  const overtimeGraphMinutes = Math.max(0, overtimeMinutes); // Use direct overtime value
+  // Only compute graph data when checkOut exists. Otherwise the day is in-progress and numbers may be incomplete.
+  const overtimeGraphMinutes = checkOut ? Math.max(0, overtimeMinutes) : 0; // Use direct overtime value
   // Adjust regular work: Total work MINUS overtime (if any)
-  const regularWorkGraphMinutes = Math.max(
-    0,
-    totalWorkMinutes - overtimeGraphMinutes
-  );
+  const regularWorkGraphMinutes = checkOut
+    ? Math.max(0, totalWorkMinutes - overtimeGraphMinutes)
+    : 0;
 
-  const graphData = [
-    { name: "Work", minutes: regularWorkGraphMinutes, fill: "#3b82f6" }, // Blue
-    { name: "Break", minutes: totalBreakMinutes, fill: "#f59e0b" }, // Amber
-    { name: "Overtime", minutes: overtimeGraphMinutes, fill: "#10b981" }, // Emerald
-  ].filter((d) => d.minutes > 0); // Only show bars with > 0 minutes
+  const graphData = checkOut
+    ? [
+        { name: "Work", minutes: regularWorkGraphMinutes, fill: "#3b82f6" }, // Blue
+        { name: "Break", minutes: totalBreakMinutes, fill: "#f59e0b" }, // Amber
+        { name: "Overtime", minutes: overtimeGraphMinutes, fill: "#10b981" }, // Emerald
+      ].filter((d) => d.minutes > 0)
+    : [];
 
   const DetailRow: React.FC<{
     label: string;
@@ -650,30 +654,41 @@ const DailyDetailModal: React.FC<{
                     value={status}
                     color="text-green-600 font-bold"
                   />
-                  <DetailRow
-                    label="Total Work"
-                    value={minutesToHoursMinutes(totalWorkMinutes)}
-                    color="text-blue-600 font-bold"
-                  />
-                  <DetailRow
-                    label="Total Break"
-                    value={minutesToHoursMinutes(totalBreakMinutes)}
-                    color="text-amber-600 font-bold"
-                  />
-                  {/* Conditionally show Late/OT */}
-                  {lateMinutes > 0 && (
+                  {/* If the user hasn't checked out yet we cannot reliably show total/late/OT */}
+                  {!checkOut ? (
                     <DetailRow
-                      label="Late By"
-                      value={`${lateMinutes} min`}
-                      color="text-orange-600 font-bold"
+                      label="Total Work"
+                      value={"—"}
+                      color="text-blue-600 font-bold"
                     />
-                  )}
-                  {overtimeMinutes > 0 && (
-                    <DetailRow
-                      label="Overtime"
-                      value={minutesToHoursMinutes(overtimeMinutes)}
-                      color="text-purple-600 font-bold"
-                    />
+                  ) : (
+                    <>
+                      <DetailRow
+                        label="Total Work"
+                        value={minutesToHoursMinutes(totalWorkMinutes)}
+                        color="text-blue-600 font-bold"
+                      />
+                      <DetailRow
+                        label="Total Break"
+                        value={minutesToHoursMinutes(totalBreakMinutes)}
+                        color="text-amber-600 font-bold"
+                      />
+                      {/* Conditionally show Late/OT only when check-out exists */}
+                      {lateMinutes > 0 && (
+                        <DetailRow
+                          label="Late By"
+                          value={`${lateMinutes} min`}
+                          color="text-orange-600 font-bold"
+                        />
+                      )}
+                      {overtimeMinutes > 0 && (
+                        <DetailRow
+                          label="Overtime"
+                          value={minutesToHoursMinutes(overtimeMinutes)}
+                          color="text-purple-600 font-bold"
+                        />
+                      )}
+                    </>
                   )}
                 </dl>
 
@@ -992,7 +1007,11 @@ const UserAttendanceReport = () => {
       switch (row.status) {
         case "Present":
           totalPresent++;
-          totalMinutes += row.totalWorkMinutes || 0; // Use || 0 as fallback
+          // Only include totalWorkMinutes in the totals if the user has checked out for that day.
+          // When checkOut is null the day is still in-progress and totalWorkMinutes may be invalid.
+          if (row.checkOut) {
+            totalMinutes += row.totalWorkMinutes || 0; // Use || 0 as fallback
+          }
           break;
         case "Absent":
           totalAbsent++;
@@ -1218,8 +1237,8 @@ const UserAttendanceReport = () => {
                       {formatTime(row.checkOut)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-                      {/* Use minutesToHoursMinutes for consistency */}
-                      {row.status === "Present"
+                      {/* Use minutesToHoursMinutes for consistency. Only show when user has checked out. */}
+                      {row.status === "Present" && row.checkOut
                         ? minutesToHoursMinutes(row.totalWorkMinutes)
                         : "---"}
                     </td>
@@ -1266,667 +1285,3 @@ const UserAttendanceReport = () => {
 
 export default UserAttendanceReport;
 
-// //--------------------------------------------------------------------------------
-
-// "use client";
-// import React, { useState, useEffect, useCallback, useMemo } from "react";
-// import { useParams } from "next/navigation";
-// import {
-//   Loader2,
-//   AlertTriangle,
-//   Calendar,
-//   Search,
-//   User,
-//   Check,
-//   X,
-//   Coffee,
-//   Moon,
-//   TrendingUp,
-//   Clock,
-//   Briefcase,
-//   PieChart,
-// } from "lucide-react";
-// import {
-//   BarChart,
-//   Bar,
-//   XAxis,
-//   YAxis,
-//   Tooltip,
-//   ResponsiveContainer,
-//   Legend,
-//   Cell,
-//   CartesianGrid,
-// } from "recharts";
-
-// // --- CONFIGURATION ---
-// const API_BASE_URL = "http://localhost:5050"; // Use your actual API base URL
-// const EXPECTED_WORK_MINUTES = 480; // 8 hours. Used for Overtime calc in graph
-
-// // --- TYPES ---
-// interface ReportRow {
-//   date: string;
-//   status: "Present" | "Absent" | "Holiday" | "Sunday Holiday" | "On Leave";
-//   checkIn: string | null;
-//   checkOut: string | null;
-//   breakIn: string | null;
-//   breakOut: string | null;
-//   // --- CORRECTED CASE ---
-//   totalWorkMinutes: number;
-//   totalBreakMinutes: number;
-// }
-
-// interface UserDetails {
-//   id: string;
-//   name: string;
-// }
-
-// interface ReportSummary {
-//   totalPresent: number;
-//   totalAbsent: number;
-//   totalLeave: number;
-//   totalHolidays: number;
-//   totalWorkHours: string;
-// }
-
-// // --- UTILITY ---
-// const fetchApi = async (url: string) => {
-//   const token = localStorage.getItem("token");
-//   if (!token) throw new Error("Authentication token not found.");
-//   const headers = { Authorization: `Bearer ${token}` };
-//   const response = await fetch(`${API_BASE_URL}${url}`, { headers });
-//   if (!response.ok) {
-//     const errorData = await response.json();
-//     throw new Error(errorData.message || `API Error: ${response.statusText}`);
-//   }
-//   return response.json();
-// };
-
-// const formatDate = (date: Date) => date.toISOString().split("T")[0];
-
-// const formatTime = (dateTime: string | null) => {
-//   if (!dateTime) return "---";
-//   try {
-//     return new Date(dateTime).toLocaleTimeString("en-US", {
-//       hour: "2-digit",
-//       minute: "2-digit",
-//       hour12: true,
-//     });
-//   } catch (e) {
-//     return "Invalid Time";
-//   }
-// };
-
-// // Helper to format minutes to "Hh M_m" with safety check
-// const minutesToHours = (minutes: number | null | undefined): string => {
-//   // console.log("minutesToHours received:", minutes, typeof minutes); // Keep for debugging if needed
-//   if (minutes === null || typeof minutes === "undefined" || isNaN(minutes)) {
-//     // console.warn("Invalid input to minutesToHours:", minutes);
-//     return "---"; // Return dashes for invalid input
-//   }
-//   if (minutes < 0) minutes = 0; // Prevent negative durations
-//   const h = Math.floor(minutes / 60);
-//   const m = Math.round(minutes % 60); // Use round for potentially fractional minutes from DATEDIFF
-//   return `${h}h ${m}m`;
-// };
-
-// // --- HELPER for row styling ---
-// const getStatusBadge = (status: ReportRow["status"]) => {
-//   switch (status) {
-//     case "Present":
-//       return (
-//         <span className="px-2 py-1 text-xs font-medium text-green-800 bg-green-100 rounded-full flex items-center gap-1">
-//           <Check className="w-3 h-3" /> {status}
-//         </span>
-//       );
-//     case "Absent":
-//       return (
-//         <span className="px-2 py-1 text-xs font-medium text-red-800 bg-red-100 rounded-full flex items-center gap-1">
-//           <X className="w-3 h-3" /> {status}
-//         </span>
-//       );
-//     case "On Leave":
-//       return (
-//         <span className="px-2 py-1 text-xs font-medium text-blue-800 bg-blue-100 rounded-full flex items-center gap-1">
-//           <Coffee className="w-3 h-3" /> {status}
-//         </span>
-//       );
-//     case "Holiday":
-//     case "Sunday Holiday":
-//       return (
-//         <span className="px-2 py-1 text-xs font-medium text-purple-800 bg-purple-100 rounded-full flex items-center gap-1">
-//           <Moon className="w-3 h-3" /> {status}
-//         </span>
-//       );
-//     default:
-//       return (
-//         <span className="px-2 py-1 text-xs font-medium text-gray-800 bg-gray-100 rounded-full">
-//           {status}
-//         </span>
-//       );
-//   }
-// };
-
-// // --- Summary Card Component ---
-// const SummaryCard: React.FC<{
-//   title: string;
-//   value: string | number | React.ReactNode;
-//   icon: React.ElementType;
-//   color: string;
-// }> = ({ title, value, icon: Icon, color }) => (
-//   <div className="flex-1 p-5 bg-white rounded-xl shadow-lg border border-gray-200 flex items-center gap-4 min-w-[200px]">
-//     <div className={`p-3 rounded-full ${color}`}>
-//       <Icon className="w-6 h-6 text-white" />
-//     </div>
-//     <div>
-//       <p className="text-sm font-medium text-gray-500">{title}</p>
-//       <p className="text-2xl font-bold text-gray-900">{value}</p>
-//     </div>
-//   </div>
-// );
-
-// // --- Daily Detail Modal Component ---
-// const DailyDetailModal: React.FC<{ day: ReportRow; onClose: () => void }> = ({
-//   day,
-//   onClose,
-// }) => {
-//   const {
-//     date,
-//     status,
-//     checkIn,
-//     checkOut,
-//     breakIn,
-//     breakOut,
-//     totalWorkMinutes, // Correct case
-//     totalBreakMinutes, // Correct case
-//   } = day;
-
-//   // Calculate values for the graph
-//   const overtimeMinutes = Math.max(0, totalWorkMinutes - EXPECTED_WORK_MINUTES);
-//   const regularWorkMinutes = totalWorkMinutes - overtimeMinutes;
-
-//   const graphData = [
-//     { name: "Work", minutes: regularWorkMinutes, fill: "#3b82f6" }, // Blue
-//     { name: "Break", minutes: totalBreakMinutes, fill: "#f59e0b" }, // Amber
-//     { name: "Overtime", minutes: overtimeMinutes, fill: "#10b981" }, // Emerald
-//   ].filter((d) => d.minutes > 0); // Only show bars with > 0 minutes
-
-//   const DetailRow: React.FC<{
-//     label: string;
-//     value: string;
-//     color?: string;
-//   }> = ({ label, value, color = "text-gray-900" }) => (
-//     <div className="py-3 sm:grid sm:grid-cols-3 sm:gap-4 items-center">
-//       <dt className="text-sm font-medium text-gray-500">{label}</dt>
-//       <dd
-//         className={`mt-1 text-sm sm:mt-0 sm:col-span-2 font-semibold ${color}`}
-//       >
-//         {value}
-//       </dd>
-//     </div>
-//   );
-
-//   return (
-//     // Modal backdrop with close functionality
-//     <div
-//       className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center p-4 z-50 transition-opacity duration-300"
-//       onClick={onClose}
-//     >
-//       {/* Modal content area, prevents closing when clicking inside */}
-//       <div
-//         className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col transform transition-all duration-300 scale-95 opacity-0 animate-modal-scale-in"
-//         onClick={(e) => e.stopPropagation()}
-//         style={{ animationFillMode: "forwards" }} // Keep final state of animation
-//       >
-//         {/* Modal Header */}
-//         <div className="flex items-center justify-between p-5 border-b bg-gray-50">
-//           <div>
-//             <h2 className="text-xl font-bold text-gray-900">Daily Detail</h2>
-//             <p className="text-sm text-gray-600">{date}</p>
-//           </div>
-//           <button
-//             onClick={onClose}
-//             className="p-2 text-gray-500 hover:bg-gray-200 rounded-full transition"
-//             aria-label="Close modal"
-//           >
-//             <X className="w-5 h-5" />
-//           </button>
-//         </div>
-
-//         {/* Modal Content */}
-//         <div className="p-6 overflow-y-auto">
-//           {status === "Present" ? (
-//             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-//               {/* Left Side: Stats */}
-//               <div>
-//                 <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center">
-//                   <Clock className="w-4 h-4 mr-2 text-indigo-500" />
-//                   Summary
-//                 </h3>
-//                 <dl className="divide-y divide-gray-200 border rounded-lg overflow-hidden bg-white">
-//                   <DetailRow
-//                     label="Status"
-//                     value={status}
-//                     color="text-green-600 font-bold"
-//                   />
-//                   <DetailRow
-//                     label="Total Work"
-//                     value={minutesToHours(totalWorkMinutes)}
-//                     color="text-blue-600 font-bold"
-//                   />
-//                   <DetailRow
-//                     label="Total Break"
-//                     value={minutesToHours(totalBreakMinutes)}
-//                     color="text-amber-600 font-bold"
-//                   />
-//                   <DetailRow
-//                     label="Overtime"
-//                     value={minutesToHours(overtimeMinutes)}
-//                     color="text-emerald-600 font-bold"
-//                   />
-//                 </dl>
-
-//                 <h3 className="text-lg font-semibold text-gray-800 mt-6 mb-2 flex items-center">
-//                   <Calendar className="w-4 h-4 mr-2 text-indigo-500" />
-//                   Timestamps
-//                 </h3>
-//                 <dl className="divide-y divide-gray-200 border rounded-lg overflow-hidden bg-white">
-//                   <DetailRow label="Check In" value={formatTime(checkIn)} />
-//                   <DetailRow label="Break In" value={formatTime(breakIn)} />
-//                   <DetailRow label="Break Out" value={formatTime(breakOut)} />
-//                   <DetailRow label="Check Out" value={formatTime(checkOut)} />
-//                 </dl>
-//               </div>
-
-//               {/* Right Side: Graph */}
-//               <div className="min-h-[300px] flex flex-col">
-//                 <h3 className="text-lg font-semibold text-gray-800 mb-2 flex items-center">
-//                   <PieChart className="w-4 h-4 mr-2 text-indigo-500" />
-//                   Time Visualization
-//                 </h3>
-//                 <div className="flex-grow">
-//                   <ResponsiveContainer width="100%" height={300}>
-//                     <BarChart
-//                       data={graphData}
-//                       layout="vertical"
-//                       margin={{ top: 5, right: 30, left: 20, bottom: 5 }}
-//                     >
-//                       <CartesianGrid strokeDasharray="3 3" horizontal={false} />
-//                       <XAxis
-//                         type="number"
-//                         tickFormatter={(value) => minutesToHours(value)}
-//                       />
-//                       <YAxis dataKey="name" type="category" width={60} />
-//                       <Tooltip
-//                         formatter={(value: number, name: string) => [
-//                           minutesToHours(value),
-//                           name,
-//                         ]}
-//                         cursor={{ fill: "rgba(230, 230, 230, 0.5)" }}
-//                       />
-//                       <Legend />
-//                       <Bar dataKey="minutes" name="Duration" barSize={40}>
-//                         {graphData.map((entry, index) => (
-//                           <Cell key={`cell-${index}`} fill={entry.fill} />
-//                         ))}
-//                       </Bar>
-//                     </BarChart>
-//                   </ResponsiveContainer>
-//                 </div>
-//               </div>
-//             </div>
-//           ) : (
-//             // Fallback for non-present days
-//             <div className="text-center py-10">
-//               <h3 className="text-lg font-semibold text-gray-800">
-//                 Day Summary
-//               </h3>
-//               <p className="text-gray-600 mt-2">The status for this day was:</p>
-//               <div className="mt-4 inline-block">{getStatusBadge(status)}</div>
-//               <p className="text-gray-500 text-sm mt-4">
-//                 No timing details are available.
-//               </p>
-//             </div>
-//           )}
-//         </div>
-//         {/* Optional: Add a subtle animation keyframe definition if not globally available */}
-//         <style jsx>{`
-//           @keyframes modal-scale-in {
-//             from {
-//               opacity: 0;
-//               transform: scale(0.95);
-//             }
-//             to {
-//               opacity: 1;
-//               transform: scale(1);
-//             }
-//           }
-//           .animate-modal-scale-in {
-//             animation: modal-scale-in 0.2s ease-out forwards;
-//           }
-//         `}</style>
-//       </div>
-//     </div>
-//   );
-// };
-
-// // --- MAIN PAGE COMPONENT ---
-// const UserAttendanceReport = () => {
-//   const params = useParams();
-//   const userId = params.userId as string;
-//   const today = new Date().toISOString().split("T")[0];
-
-//   const [reportData, setReportData] = useState<ReportRow[]>([]);
-//   const [userDetails, setUserDetails] = useState<UserDetails | null>(null);
-//   const [isLoading, setIsLoading] = useState(false);
-//   const [error, setError] = useState<string | null>(null);
-//   const [selectedDay, setSelectedDay] = useState<ReportRow | null>(null);
-//   const [dateRange, setDateRange] = useState({
-//     startDate: formatDate(
-//       new Date(new Date().setDate(new Date().getDate() - 30))
-//     ),
-//     endDate: today,
-//   });
-
-//   // Fetch user details (name)
-//   useEffect(() => {
-//     if (!userId) return;
-//     const fetchUser = async () => {
-//       try {
-//         // Fetching all and finding one. Consider a specific GET /users/:id endpoint.
-//         const data = await fetchApi(`/users/minimal?userId=${userId}`);
-//         const user = (data.items || []).find(
-//           (u: UserDetails) => u.id === userId
-//         );
-//         if (user) {
-//           setUserDetails(user);
-//         } else {
-//           setUserDetails({ id: userId, name: "Employee" }); // Fallback
-//         }
-//       } catch (err) {
-//         console.warn("Could not fetch user name");
-//         setUserDetails({ id: userId, name: "Employee" }); // Set fallback
-//       }
-//     };
-//     fetchUser();
-//   }, [userId]);
-
-//   // Fetch report data
-//   const fetchReport = useCallback(async () => {
-//     if (!userId) return;
-//     setIsLoading(true);
-//     setError(null);
-//     try {
-//       const params = new URLSearchParams({
-//         startDate: dateRange.startDate,
-//         endDate: dateRange.endDate,
-//       });
-//       const data = await fetchApi(
-//         `/attendance/report/${userId}?${params.toString()}`
-//       );
-//       setReportData(data || []);
-//     } catch (err: any) {
-//       setError(err.message || "Failed to fetch report.");
-//       setReportData([]);
-//     } finally {
-//       setIsLoading(false);
-//     }
-//   }, [userId, dateRange]);
-
-//   const handleDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-//     const { name, value } = e.target;
-//     if (value > today) return;
-
-//     setDateRange((prev) => {
-//       const newState = { ...prev, [name]: value };
-//       if (name === "startDate" && value > newState.endDate)
-//         newState.endDate = value;
-//       if (name === "endDate" && value < newState.startDate)
-//         newState.startDate = value;
-//       return newState;
-//     });
-//   };
-
-//   const handleSearch = () => {
-//     fetchReport();
-//   };
-
-//   useEffect(() => {
-//     fetchReport();
-//   }, [fetchReport]);
-
-//   // Calculate Summary Data
-//   const summary = useMemo((): ReportSummary => {
-//     let totalPresent = 0;
-//     let totalAbsent = 0;
-//     let totalLeave = 0;
-//     let totalHolidays = 0; // Includes Sunday Holiday
-//     let totalMinutes = 0;
-
-//     for (const row of reportData) {
-//       switch (row.status) {
-//         case "Present":
-//           totalPresent++;
-//           totalMinutes += row.totalWorkMinutes; // Correct case
-//           break;
-//         case "Absent":
-//           totalAbsent++;
-//           break;
-//         case "On Leave":
-//           totalLeave++;
-//           break;
-//         case "Holiday":
-//         case "Sunday Holiday":
-//           totalHolidays++;
-//           break;
-//       }
-//     }
-//     return {
-//       totalPresent,
-//       totalAbsent,
-//       totalLeave,
-//       totalHolidays,
-//       totalWorkHours: minutesToHours(totalMinutes),
-//     };
-//   }, [reportData]);
-
-//   return (
-//     <div className="p-6 md:p-10 bg-gray-50 min-h-screen">
-//       <h1 className="text-4xl font-extrabold text-gray-900 mb-2">
-//         Attendance Report
-//       </h1>
-//       <h2 className="text-2xl font-medium text-indigo-600 mb-8 flex items-center">
-//         <User className="w-6 h-6 mr-2" />
-//         {userDetails ? (
-//           userDetails.name
-//         ) : (
-//           <Loader2 className="w-5 h-5 animate-spin" />
-//         )}
-//       </h2>
-
-//       {/* Date Filter Bar */}
-//       <div className="bg-white p-5 rounded-2xl shadow-lg mb-8 border border-gray-200 flex flex-wrap gap-4 items-end">
-//         <div>
-//           <label className="block text-sm font-medium text-gray-700 mb-1">
-//             Start Date
-//           </label>
-//           <input
-//             type="date"
-//             name="startDate"
-//             value={dateRange.startDate}
-//             onChange={handleDateChange}
-//             max={today}
-//             className="px-3 py-2 border border-gray-300 rounded-lg"
-//           />
-//         </div>
-//         <div>
-//           <label className="block text-sm font-medium text-gray-700 mb-1">
-//             End Date
-//           </label>
-//           <input
-//             type="date"
-//             name="endDate"
-//             value={dateRange.endDate}
-//             onChange={handleDateChange}
-//             max={today}
-//             className="px-3 py-2 border border-gray-300 rounded-lg"
-//           />
-//         </div>
-//         <button
-//           onClick={handleSearch}
-//           disabled={isLoading}
-//           className="px-5 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition font-medium flex items-center disabled:opacity-50"
-//         >
-//           {isLoading ? (
-//             <Loader2 className="w-5 h-5 animate-spin mr-2" />
-//           ) : (
-//             <Search className="w-5 h-5 mr-2" />
-//           )}
-//           Search
-//         </button>
-//       </div>
-
-//       {/* Summary Cards */}
-//       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-//         <SummaryCard
-//           title="Total Present"
-//           value={
-//             isLoading ? (
-//               <Loader2 className="w-5 h-5 animate-spin text-green-500" />
-//             ) : (
-//               summary.totalPresent
-//             )
-//           }
-//           icon={Check}
-//           color="bg-green-500"
-//         />
-//         <SummaryCard
-//           title="Total Absent"
-//           value={
-//             isLoading ? (
-//               <Loader2 className="w-5 h-5 animate-spin text-red-500" />
-//             ) : (
-//               summary.totalAbsent
-//             )
-//           }
-//           icon={X}
-//           color="bg-red-500"
-//         />
-//         <SummaryCard
-//           title="Total On Leave"
-//           value={
-//             isLoading ? (
-//               <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
-//             ) : (
-//               summary.totalLeave
-//             )
-//           }
-//           icon={Coffee}
-//           color="bg-blue-500"
-//         />
-//         <SummaryCard
-//           title="Total Work Hours"
-//           value={
-//             isLoading ? (
-//               <Loader2 className="w-5 h-5 animate-spin text-indigo-500" />
-//             ) : (
-//               summary.totalWorkHours
-//             )
-//           }
-//           icon={Clock}
-//           color="bg-indigo-500"
-//         />
-//       </div>
-
-//       {/* Report Table */}
-//       <div className="bg-white shadow-2xl rounded-2xl overflow-hidden border border-gray-200">
-//         <div className="overflow-x-auto">
-//           <table className="min-w-full divide-y divide-gray-200">
-//             <thead className="bg-gray-50">
-//               <tr>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Date
-//                 </th>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Status
-//                 </th>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Check In
-//                 </th>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Check Out
-//                 </th>
-//                 <th className="px-6 py-4 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-//                   Total Hours
-//                 </th>
-//               </tr>
-//             </thead>
-//             <tbody className="bg-white divide-y divide-gray-200">
-//               {isLoading ? (
-//                 <tr>
-//                   <td colSpan={5} className="text-center py-12 text-indigo-600">
-//                     <Loader2 className="w-8 h-8 animate-spin mx-auto mb-3" />
-//                     <p className="text-sm">Generating report...</p>
-//                   </td>
-//                 </tr>
-//               ) : error ? (
-//                 <tr>
-//                   <td colSpan={5} className="text-center py-12 text-gray-500">
-//                     <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-red-500" />
-//                     <p className="text-red-700">Error: {error}</p>
-//                   </td>
-//                 </tr>
-//               ) : reportData.length === 0 ? (
-//                 <tr>
-//                   <td colSpan={5} className="text-center py-12 text-gray-500">
-//                     <AlertTriangle className="w-8 h-8 mx-auto mb-3 text-yellow-500" />
-//                     <p>No data found for this date range.</p>
-//                   </td>
-//                 </tr>
-//               ) : (
-//                 reportData.map((row) => (
-//                   <tr
-//                     key={row.date}
-//                     className={`${
-//                       row.status === "Absent"
-//                         ? "bg-red-50 hover:bg-red-100"
-//                         : "hover:bg-gray-50"
-//                     } transition cursor-pointer`}
-//                     onClick={() => setSelectedDay(row)} // Open modal on click
-//                   >
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
-//                       {row.date}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap">
-//                       {getStatusBadge(row.status)}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-//                       {formatTime(row.checkIn)}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
-//                       {formatTime(row.checkOut)}
-//                     </td>
-//                     <td className="px-6 py-4 whitespace-nowrap text-sm font-bold text-indigo-600">
-//                       {row.status === "Present"
-//                         ? minutesToHours(row.totalWorkMinutes)
-//                         : "---"}
-//                     </td>
-//                   </tr>
-//                 ))
-//               )}
-//             </tbody>
-//           </table>
-//         </div>
-//       </div>
-
-//       {/* Render the Modal */}
-//       {selectedDay && (
-//         <DailyDetailModal
-//           day={selectedDay}
-//           onClose={() => setSelectedDay(null)}
-//         />
-//       )}
-//     </div>
-//   );
-// };
-
-// export default UserAttendanceReport;

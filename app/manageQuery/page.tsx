@@ -408,7 +408,7 @@ const QueryDetailModal: React.FC<{
           {/* Proof URL */}
           {query.ProofUrl && (
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
                 <Paperclip className="w-4 h-4" />
                 Attached Proof
               </label>
@@ -429,7 +429,7 @@ const QueryDetailModal: React.FC<{
           {/* Existing Resolution (if already resolved) */}
           {isAlreadyResolved && query.ResolutionNotes && (
             <div>
-              <label className="block text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+              <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-green-600" />
                 Previous Resolution
               </label>

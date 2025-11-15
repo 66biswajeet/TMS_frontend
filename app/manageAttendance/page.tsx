@@ -12,11 +12,8 @@ import {
   TrendingUp,
   Search,
 } from "lucide-react";
-// Removed X, MapPin, Calendar, Pencil, ChevronLeft, ChevronRight, AlertCircle, Recharts imports as they are no longer used
 
-// --- CONFIGURATION ---
-const API_BASE_URL = "http://localhost:5050";
-
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
 // --- TYPES ---
 interface HistoryFilterParams {
   branchId?: string;

@@ -22,7 +22,7 @@ import { Label } from "@/components/ui/label"; // <-- ADD THIS
 import { Input } from "@/components/ui/input";
 
 // --- CONFIGURATION ---
-const API_BASE_URL = "http://localhost:5050"; // <-- REMOVED /api prefix
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL; // <-- REMOVED /api prefix
 
 // --- TYPES ---
 interface UserSummary {

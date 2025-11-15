@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { formatTimeRemaining } from "@/lib/time-utils";
 import { useDispatch, useSelector } from "react-redux";
 import dynamic from "next/dynamic";
 import type { RootState } from "@/redux/store";
@@ -119,7 +120,16 @@ function ClientOnlyTaskList() {
     return matchesSearch && matchesStatus && matchesScope && matchesBranch;
   });
 
-  const getStatusColor = (status: string) => {
+  const getStatusColor = (status: string, checklistPercentage?: number) => {
+    // First check if task is partially complete
+    if (
+      status.toLowerCase() !== "completed" &&
+      checklistPercentage &&
+      checklistPercentage > 0
+    ) {
+      return "warning"; // Add this variant to your Badge component
+    }
+
     switch (status.toLowerCase()) {
       case "completed":
         return "default";
@@ -137,12 +147,23 @@ function ClientOnlyTaskList() {
         return "destructive";
       case "expired":
         return "destructive";
+      case "partial":
+        return "warning";
       default:
         return "outline";
     }
   };
 
-  const getStatusIcon = (status: string) => {
+  const getStatusIcon = (status: string, checklistPercentage?: number) => {
+    // First check if task is partially complete
+    if (
+      status.toLowerCase() !== "completed" &&
+      checklistPercentage &&
+      checklistPercentage > 0
+    ) {
+      return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+    }
+
     switch (status.toLowerCase()) {
       case "completed":
       case "approved":
@@ -153,6 +174,8 @@ function ClientOnlyTaskList() {
       case "in_progress":
       case "pending":
         return <Clock className="h-4 w-4" />;
+      case "partial":
+        return <AlertTriangle className="h-4 w-4" />;
       default:
         return null;
     }
@@ -182,34 +205,7 @@ function ClientOnlyTaskList() {
 
   const formatDeadline = (deadline: string, status: string) => {
     try {
-      const date = new Date(deadline);
-      if (isNaN(date.getTime())) {
-        return "Invalid date";
-      }
-
-      if (
-        status === "completed" ||
-        status === "submitted" ||
-        status === "approved"
-      ) {
-        return `Task ${status}`;
-      }
-
-      const now = new Date();
-      const diffMs = date.getTime() - now.getTime();
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-
-      if (diffHours < -24) {
-        const days = Math.abs(Math.floor(diffHours / 24));
-        return `Overdue by ${days}d`;
-      } else if (diffHours < 0) {
-        return `Overdue by ${Math.abs(diffHours)}h`;
-      } else if (diffHours < 24) {
-        return `${diffHours}h remaining`;
-      } else {
-        const days = Math.floor(diffHours / 24);
-        return `${days}d remaining`;
-      }
+      return formatTimeRemaining(deadline, status).text;
     } catch (error) {
       return "Date error";
     }
@@ -256,20 +252,63 @@ function ClientOnlyTaskList() {
             )}
 
             {/* Checklist Progress */}
-            <div className="flex items-center gap-2 mt-2 p-2 bg-green-50 rounded">
-              <CheckCircle className="h-4 w-4 text-green-600" />
-              <span className="text-sm font-medium text-green-800">
-                {task.ChecklistCompleted || 0} out of {task.ChecklistTotal || 0}{" "}
-                ({task.ChecklistPercentage || 0}%)
-              </span>
+            <div className="flex items-center gap-2 mt-2 p-2 rounded">
+              <div
+                className={`w-full ${
+                  task.ChecklistPercentage === 100
+                    ? "bg-green-50"
+                    : task.ChecklistPercentage > 0
+                    ? "bg-yellow-50"
+                    : "bg-gray-50"
+                }`}
+              >
+                <div className="flex items-center justify-between p-2">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle
+                      className={`h-4 w-4 ${
+                        task.ChecklistPercentage === 100
+                          ? "text-green-600"
+                          : task.ChecklistPercentage > 0
+                          ? "text-yellow-600"
+                          : "text-gray-400"
+                      }`}
+                    />
+                    <span
+                      className={`text-sm font-medium ${
+                        task.ChecklistPercentage === 100
+                          ? "text-green-800"
+                          : task.ChecklistPercentage > 0
+                          ? "text-yellow-800"
+                          : "text-gray-600"
+                      }`}
+                    >
+                      {task.ChecklistCompleted || 0} of{" "}
+                      {task.ChecklistTotal || 0} (
+                      {task.ChecklistPercentage || 0}%)
+                    </span>
+                  </div>
+                  <div className="w-24 h-2 bg-gray-200 rounded-full">
+                    <div
+                      className={`h-2 rounded-full transition-all ${
+                        task.ChecklistPercentage === 100
+                          ? "bg-green-600"
+                          : "bg-yellow-500"
+                      }`}
+                      style={{ width: `${task.ChecklistPercentage || 0}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
           <Badge
-            variant={getStatusColor(task.Status)}
+            variant={getStatusColor(task.Status, task.ChecklistPercentage)}
             className="flex items-center gap-1 group-hover:scale-105 transition-transform duration-200"
           >
-            {getStatusIcon(task.Status)}
-            {task.Status.replace("_", " ")}
+            {getStatusIcon(task.Status, task.ChecklistPercentage)}
+            {task.ChecklistPercentage > 0 && task.ChecklistPercentage < 100
+              ? "Partial"
+              : task.Status.replace("_", " ")}
           </Badge>
         </div>
       </CardHeader>
@@ -395,11 +434,17 @@ function ClientOnlyTaskList() {
                   </td>
                   <td className="p-4">
                     <Badge
-                      variant={getStatusColor(task.Status)}
+                      variant={getStatusColor(
+                        task.Status,
+                        task.ChecklistPercentage
+                      )}
                       className="flex items-center gap-1 w-fit group-hover:scale-105 transition-transform duration-200"
                     >
-                      {getStatusIcon(task.Status)}
-                      {task.Status.replace("_", " ")}
+                      {getStatusIcon(task.Status, task.ChecklistPercentage)}
+                      {task.ChecklistPercentage > 0 &&
+                      task.ChecklistPercentage < 100
+                        ? "Partial"
+                        : task.Status.replace("_", " ")}
                     </Badge>
                   </td>
                   <td className="p-4 text-sm group-hover:text-foreground transition-colors duration-200">
@@ -641,11 +686,17 @@ function ClientOnlyTaskList() {
                           <CardDescription>{task.BranchName}</CardDescription>
                         </div>
                         <Badge
-                          variant={getStatusColor(task.Status)}
+                          variant={getStatusColor(
+                            task.Status,
+                            task.ChecklistPercentage
+                          )}
                           className="flex items-center gap-1 group-hover:scale-105 transition-transform"
                         >
-                          {getStatusIcon(task.Status)}
-                          {task.Status.replace("_", " ")}
+                          {getStatusIcon(task.Status, task.ChecklistPercentage)}
+                          {task.ChecklistPercentage > 0 &&
+                          task.ChecklistPercentage < 100
+                            ? "Partial"
+                            : task.Status.replace("_", " ")}
                         </Badge>
                       </div>
                     </CardHeader>

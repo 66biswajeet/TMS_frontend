@@ -799,7 +799,7 @@ export const ManagementDashboard: React.FC = () => {
       console.log("✅ Print dialog closed.");
     },
     removeAfterPrint: true, // Helps with compatibility
-  });
+  } as any);
 
   //  for Word export
   const handleExportWord = async () => {

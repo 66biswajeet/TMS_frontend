@@ -56,9 +56,7 @@ export default function LoginPage() {
 
     try {
       const response = await fetch(
-        `${
-          process.env.NEXT_PUBLIC_API_URL || "http://localhost:5050"
-        }/password-reset-requests/request`,
+        `${process.env.NEXT_PUBLIC_API_BASE_URL}/password-reset-requests/request`,
         {
           method: "POST",
           headers: {

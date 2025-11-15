@@ -1,6 +1,7 @@
 //-- Changes to show on github to see the diff --//
 "use client";
 import { useState, useEffect, useRef } from "react";
+import { formatTimeRemaining } from "@/lib/time-utils";
 import {
   Card,
   CardContent,
@@ -8,6 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { taskMonitor } from "@/lib/task-monitor";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -167,7 +169,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const [error, setError] = useState<string | null>(null);
   const [newItemTitle, setNewItemTitle] = useState("");
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const hasAutoSubmittedRef = useRef(false);
+  // We no longer need hasAutoSubmittedRef since submission is handled by task monitor
   const [recurrence, setRecurrence] = useState<{
     isDaily: boolean;
     totalDays: number;
@@ -185,11 +187,13 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
         console.log("Task response:", taskResponse.data);
         setTask(taskResponse.data);
 
-        // Fetch checklist items
-        // const checklistResponse = await api.get(`/tasks/${taskId}/checklist`);
-        // console.log("Checklist response:", checklistResponse.data);
-        // console.log("Checklist items:", checklistResponse.data.items);
+        // Add task to monitor when loaded (monitor will also perform an immediate check if overdue)
+        if (taskResponse.data) {
+          const { TaskId, Title, Deadline, Status } = taskResponse.data;
+          taskMonitor.addTask({ TaskId, Title, Deadline, Status });
+        }
 
+        // Fetch checklist items
         const checklistUrl = selectedDate
           ? `/tasks/${taskId}/checklist?date=${selectedDate}`
           : `/tasks/${taskId}/checklist`;
@@ -222,6 +226,23 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
 
     fetchTaskData();
   }, [taskId, selectedDate]);
+
+  // Register/unregister the current task with the global TaskMonitor so it can
+  // perform deadline checks while the user has the details page open.
+  useEffect(() => {
+    if (!task) return;
+    const { TaskId } = task;
+    // ensure the task is present in monitor (addTask is idempotent)
+    taskMonitor.addTask({
+      TaskId,
+      Title: task.Title,
+      Deadline: task.Deadline,
+      Status: task.Status,
+    });
+    return () => {
+      taskMonitor.removeTask(TaskId);
+    };
+  }, [task]);
 
   const [reviewReason, setReviewReason] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -333,8 +354,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
       // Refresh task data to show updated status
       window.location.reload();
     } catch (error) {
-      console.error("Failed to submit task:", error);
-      showError("Failed to submit task. Please try again.");
+      showError("Task submission is over !!");
     } finally {
       setSubmitting(false);
     }
@@ -403,83 +423,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
 
   // ... (Lines 348-429: submitTask, approveTask, rejectTask, forwardTask definitions)
 
-  // ----------------------------------------------------
-  // ✅ NEW useEffect for Auto-Submission 10 Seconds BEFORE Deadline
-  // ----------------------------------------------------
-  // ----------------------------------------------------
-  // ✅ NEW useEffect for Auto-Submission 10 Seconds BEFORE Deadline
-  // ----------------------------------------------------
-  useEffect(() => {
-    // 1. **CRITICAL CHECK**: Exit immediately if auto-submission has already run
-    if (hasAutoSubmittedRef.current) {
-      return;
-    }
-
-    // Only auto-submit if we have a task and it's not already submitted/approved/rejected/expired
-    if (
-      !task ||
-      task.Status === "submitted" ||
-      task.Status === "approved" ||
-      task.Status === "rejected" ||
-      task.Status === "expired"
-    ) {
-      return;
-    }
-
-    const deadlineDate = new Date(task.Deadline);
-    const now = new Date();
-    const timeRemaining = deadlineDate.getTime() - now.getTime();
-
-    // Set a buffer of 10 seconds (10000 milliseconds)
-    const SUBMIT_BUFFER_MS = 10000;
-
-    // Calculate the delay until 10 seconds *before* the deadline
-    const delayBeforeDeadline = timeRemaining - SUBMIT_BUFFER_MS;
-
-    let timerId: NodeJS.Timeout | null = null;
-
-    const triggerSubmit = () => {
-      // 2. Set the flag *before* calling submitTask
-      hasAutoSubmittedRef.current = true;
-      console.log(`[Auto-Submit] Task ${taskId}: Triggering submitTask...`);
-      // Call the existing function to submit the task
-      submitTask();
-    };
-
-    // 1. If the submission window is in the future (i.e., more than 10 seconds remaining)
-    if (delayBeforeDeadline > 1000) {
-      // Check if we have at least 1 second for the timer itself
-      timerId = setTimeout(() => {
-        console.log(
-          `[Auto-Submit] Task ${taskId}: 10 seconds before deadline. Triggering submitTask...`
-        );
-        triggerSubmit();
-      }, delayBeforeDeadline);
-    }
-    // 2. If the current time is inside the 10-second buffer
-    //    (i.e., deadline is 10s to 0s away) AND the task is not yet submitted.
-    else if (timeRemaining > 0 && timeRemaining <= SUBMIT_BUFFER_MS) {
-      console.log(
-        `[Auto-Submit] Task ${taskId}: Deadline is imminent (<10s). Submitting immediately.`
-      );
-      triggerSubmit(); // <-- Use the new function
-    }
-    // 3. If the deadline has passed (timeRemaining <= 0) and the status is still not final,
-    //    submit it immediately. This handles cases where the page was loaded late.
-    else if (timeRemaining <= 0 && task.Status !== "submitted") {
-      console.log(
-        `[Auto-Submit] Task ${taskId}: Deadline has already passed. Submitting immediately.`
-      );
-      triggerSubmit(); // <-- Use the new function
-    }
-
-    // Cleanup function to clear the timer if the component unmounts or task changes
-    return () => {
-      if (timerId) {
-        clearTimeout(timerId);
-      }
-    };
-  }, [taskId, task, submitTask]); // Dependencies
+  // Auto-submission is now handled by the TaskMonitor service
 
   // const handleDeadlineReached = async () => {
   //   if (task?.AutoForward) {
@@ -566,36 +510,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   };
 
   const formatDeadline = (deadline: string) => {
-    const date = new Date(deadline);
-    const now = new Date();
-    const diffHours = Math.ceil(
-      (date.getTime() - now.getTime()) / (1000 * 60 * 60)
-    );
-
-    // Don't show overdue if task is completed, submitted, or approved
-    if (
-      task?.Status === "completed" ||
-      task?.Status === "submitted" ||
-      task?.Status === "approved"
-    ) {
-      return { text: `Task ${task.Status}`, color: "text-green-600" };
-    }
-
-    if (diffHours < 0) {
-      // Just show it's overdue. The backend scheduler will handle the submission.
-      // When the page reloads, the 'if' block above will catch the new 'submitted' status.
-      return {
-        text: `Overdue by ${Math.abs(diffHours)}h`,
-        color: "text-red-600",
-      };
-    } else if (diffHours < 24) {
-      return { text: `${diffHours}h remaining`, color: "text-amber-600" };
-    } else {
-      return {
-        text: `${Math.ceil(diffHours / 24)}d remaining`,
-        color: "text-green-600",
-      };
-    }
+    return formatTimeRemaining(deadline, task?.Status);
   };
 
   if (loading) {
