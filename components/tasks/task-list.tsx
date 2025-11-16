@@ -120,6 +120,22 @@ function ClientOnlyTaskList() {
     return matchesSearch && matchesStatus && matchesScope && matchesBranch;
   });
 
+  // Normalize status helper (handles case and spaces)
+  const normalizeStatus = (status?: string) =>
+    (status || "").toString().trim().toLowerCase().replace(/\s+/g, "_");
+
+  // Check if task is still active (not finished or expired)
+  const isActiveTask = (status?: string) => {
+    const s = normalizeStatus(status);
+    // Exclude only final/expired states - keep everything else until deadline
+    return (
+      s !== "completed" &&
+      s !== "approved" &&
+      s !== "rejected" &&
+      s !== "expired"
+    );
+  };
+
   const getStatusColor = (status: string, checklistPercentage?: number) => {
     // First check if task is partially complete
     if (
@@ -640,31 +656,40 @@ function ClientOnlyTaskList() {
         </TabsList>
 
         <TabsContent value="my-tasks">
-          {viewMode === "card" ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {filteredTasks
-                .filter((task: any) => task.TaskRelation === "Assigned to me")
-                .map(renderTaskCard)}
-            </div>
-          ) : (
-            renderTaskTable(
-              filteredTasks.filter(
-                (task: any) => task.TaskRelation === "Assigned to me"
-              )
-            )
-          )}
+          {(() => {
+            const myActiveTasks = filteredTasks.filter(
+              (task: any) =>
+                task.TaskRelation === "Assigned to me" &&
+                isActiveTask(task.Status)
+            );
 
-          {filteredTasks.filter(
-            (task: any) => task.TaskRelation === "Assigned to me"
-          ).length === 0 && (
-            <div className="text-center py-12">
-              <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
-              <p className="text-muted-foreground">No tasks assigned to you</p>
-              <p className="text-sm text-muted-foreground mt-1">
-                Your assigned tasks will appear here
-              </p>
-            </div>
-          )}
+            return viewMode === "card" ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {myActiveTasks.map(renderTaskCard)}
+              </div>
+            ) : (
+              renderTaskTable(myActiveTasks)
+            );
+          })()}
+
+          {(() => {
+            const myActiveTasks = filteredTasks.filter(
+              (task: any) =>
+                task.TaskRelation === "Assigned to me" &&
+                isActiveTask(task.Status)
+            );
+            return myActiveTasks.length === 0 ? (
+              <div className="text-center py-12">
+                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground">
+                  No active tasks assigned to you
+                </p>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Tasks will appear here until their deadline is reached
+                </p>
+              </div>
+            ) : null;
+          })()}
         </TabsContent>
 
         <TabsContent value="workflow">

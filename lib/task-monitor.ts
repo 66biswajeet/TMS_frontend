@@ -95,9 +95,18 @@ class TaskMonitor {
         continue;
       }
 
-      // Skip tasks in final states
+      // Skip tasks in final states OR already in approval workflow
       if (
-        ["submitted", "approved", "rejected", "expired"].includes(task.Status)
+        [
+          "submitted",
+          "approved",
+          "rejected",
+          "expired",
+          "Pending_Area_Manager",
+          "Pending_Auditor",
+          "Pending_Management",
+          "Completed",
+        ].includes(task.Status)
       ) {
         this.removeTask(taskId);
         continue;
@@ -202,11 +211,18 @@ class TaskMonitor {
     if (task) {
       const updatedTask = { ...task, ...updates };
 
-      // If task enters a final state, remove it from monitoring
+      // If task enters a final state or approval workflow, remove it from monitoring
       if (
-        ["submitted", "approved", "rejected", "expired"].includes(
-          updatedTask.Status
-        )
+        [
+          "submitted",
+          "approved",
+          "rejected",
+          "expired",
+          "Pending_Area_Manager",
+          "Pending_Auditor",
+          "Pending_Management",
+          "Completed",
+        ].includes(updatedTask.Status)
       ) {
         this.removeTask(taskId);
         if (this.autoSubmittedTasks.has(taskId)) {

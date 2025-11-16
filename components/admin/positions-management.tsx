@@ -148,6 +148,9 @@ export function PositionsManagement() {
     const rolePositions = getPositionsForRole(role);
 
     try {
+      let createdCount = 0;
+      let skippedCount = 0;
+
       for (const pos of rolePositions) {
         // Check if position already exists
         const existingPosition = positions.find(
@@ -158,15 +161,34 @@ export function PositionsManagement() {
           await dispatch(
             createPosition({ Name: pos.name, IsActive: true }) as any
           );
+          createdCount++;
+        } else {
+          skippedCount++;
         }
       }
 
-      showSuccess(
-        `Positions for ${role.replace(
-          "_",
-          " "
-        )} role have been created successfully!`
-      );
+      // Refresh positions list after creation
+      dispatch(fetchPositions() as any);
+
+      if (createdCount > 0 && skippedCount === 0) {
+        showSuccess(
+          `All ${createdCount} positions for ${role.replace(
+            "_",
+            " "
+          )} role have been created successfully!`
+        );
+      } else if (createdCount > 0 && skippedCount > 0) {
+        showSuccess(
+          `${createdCount} positions created successfully. ${skippedCount} positions already existed.`
+        );
+      } else {
+        showWarning(
+          `All positions for ${role.replace(
+            "_",
+            " "
+          )} role already exist. No new positions were created.`
+        );
+      }
       setIsRolePositionsDialogOpen(false);
     } catch (error) {
       console.error("Failed to create role positions:", error);
@@ -194,27 +216,48 @@ export function PositionsManagement() {
     setIsDialogOpen(true);
   };
 
-  const handleDeletePosition = (positionId: string) => {
+  const handleDeletePosition = async (positionId: string) => {
     if (confirm("Are you sure you want to delete this position?")) {
-      dispatch(deletePosition(positionId) as any);
+      try {
+        await dispatch(deletePosition(positionId) as any);
+        showSuccess("Position deleted successfully!");
+        // Refresh the positions list after deleting
+        dispatch(fetchPositions() as any);
+      } catch (error) {
+        console.error("Failed to delete position:", error);
+        showError("Failed to delete position. Please try again.");
+      }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (editingPosition) {
-      // Update existing position
-      dispatch(
-        updatePosition(editingPosition.PositionId, formData) as any
-      ).then(() => {
+    try {
+      if (editingPosition) {
+        // Update existing position
+        await dispatch(
+          updatePosition(editingPosition.PositionId, formData) as any
+        );
+        showSuccess(`Position "${formData.Name}" updated successfully!`);
         setIsDialogOpen(false);
-      });
-    } else {
-      // Create new position
-      dispatch(createPosition(formData) as any).then(() => {
+        // Refresh the positions list after updating
+        dispatch(fetchPositions() as any);
+      } else {
+        // Create new position
+        await dispatch(createPosition(formData) as any);
+        showSuccess(`Position "${formData.Name}" created successfully!`);
         setIsDialogOpen(false);
-      });
+        // Refresh the positions list after creating
+        dispatch(fetchPositions() as any);
+      }
+    } catch (error: any) {
+      console.error("Failed to save position:", error);
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to save position. Please try again.";
+      showError(errorMessage);
     }
   };
 
@@ -426,6 +469,9 @@ export function PositionsManagement() {
                     key={position.PositionId}
                     className="border-b hover:bg-muted/50"
                   >
+                    <td className="p-4">
+                      <div className="font-medium">{position.Name}</div>
+                    </td>
                     <td className="p-4">
                       {position.RoleName ? (
                         <Badge variant="outline">

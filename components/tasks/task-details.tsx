@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api } from "@/lib/axios";
+import { getSocket } from "@/lib/socket";
 import { useSelector } from "react-redux";
 import { RootState } from "@/redux/store";
 import { showError, showSuccess, showWarning } from "@/lib/toast";
@@ -226,6 +227,52 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
 
     fetchTaskData();
   }, [taskId, selectedDate]);
+
+  // Live-sync task and workflow when real-time events occur (approved/submitted/updated)
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const refresh = async () => {
+      try {
+        const [taskRes, wfRes] = await Promise.all([
+          api.get(`/tasks/${taskId}`),
+          api.get(`/tasks/${taskId}/workflow`),
+        ]);
+        setTask(taskRes.data);
+        setWorkflowSteps(wfRes.data.steps || []);
+      } catch (e) {
+        console.warn("Failed to refresh task/workflow after RT event", e);
+      }
+    };
+
+    const handler = (payload: any) => {
+      try {
+        // Accept payloads with taskId directly or nested
+        const pid = payload?.taskId || payload?.data?.taskId;
+        if (!pid) return;
+        if (pid.toLowerCase() === taskId.toLowerCase()) {
+          refresh();
+        }
+      } catch (e) {
+        // ignore
+      }
+    };
+
+    socket.on("task:approved", handler);
+    socket.on("task:submitted", handler);
+    socket.on("task:updated", handler);
+    socket.on("task:rejected", handler);
+    socket.on("task:forwarded", handler);
+
+    return () => {
+      socket.off("task:approved", handler);
+      socket.off("task:submitted", handler);
+      socket.off("task:updated", handler);
+      socket.off("task:rejected", handler);
+      socket.off("task:forwarded", handler);
+    };
+  }, [taskId]);
 
   // Register/unregister the current task with the global TaskMonitor so it can
   // perform deadline checks while the user has the details page open.
@@ -438,18 +485,25 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   // };
 
   const getStatusColor = (status: string) => {
-    switch (status) {
+    const s = (status || "").toLowerCase().replace(/\s+/g, "_");
+    switch (s) {
       case "approved":
         return "default";
       case "submitted":
         return "secondary";
+      case "pending":
+      case "pending_area_manager":
+      case "pending_auditor":
+      case "pending_management":
+        return "secondary";
+      case "completed":
+        return "default";
       case "in_progress":
-        return "outline";
       case "assigned":
         return "outline";
       case "rejected":
-        return "destructive";
       case "expired":
+      case "overdue":
         return "destructive";
       default:
         return "outline";
@@ -548,16 +602,25 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
   const now = new Date();
   const deadline = new Date(task.Deadline);
   const isExpired = now > deadline;
+  const normalizedStatus =
+    task.Status?.toLowerCase().replace(/\s+/g, "_") || "";
+  const isPendingReview = normalizedStatus.startsWith("pending_");
   const isLocked =
-    task.Status === "submitted" || task.Status === "approved" || isExpired;
+    ["submitted", "approved", "completed"].includes(normalizedStatus) ||
+    isPendingReview ||
+    isExpired;
 
   // Check if current user is assigned to this task (only assignees can edit checklist)
-  const canEditChecklist =
-    assignees.some(
-      (assignee) =>
-        assignee.email === currentUser?.email ||
-        currentUser?.role === "management"
-    ) && !isLocked;
+  // Only the creator, branch manager, or area manager can add checklist items
+  const isAssignee = assignees.some(
+    (assignee) => assignee.email === currentUser?.email
+  );
+  const allowedAddRoles = ["management", "branch_manager", "area_manager"];
+  const canModifyChecklist = isAssignee && !isLocked;
+  const canAddChecklistItem =
+    (task.CreatedBy === currentUser?.id ||
+      allowedAddRoles.includes(currentUser?.role)) &&
+    !isLocked;
 
   return (
     <div className="space-y-6">
@@ -601,19 +664,30 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
               )}
             </div>
             <div className="flex gap-2">
-              {(task.Status === "in_progress" || task.Status === "Pending") && (
+              {["in_progress", "pending", "assigned"].includes(
+                normalizedStatus
+              ) && (
                 <>
-                  <Button
-                    variant="outline"
-                    onClick={forwardTask}
-                    disabled={submitting}
-                  >
-                    <ArrowUp className="h-4 w-4 mr-2" />
-                    Forward Now
-                  </Button>
-                  <Button onClick={submitTask} disabled={submitting}>
-                    {submitting ? "Submitting..." : "Submit for Review"}
-                  </Button>
+                  {/* Show Submit only to staff assignee (not creator/managers) */}
+                  {canModifyChecklist && currentUser?.id !== task.CreatedBy && (
+                    <Button onClick={submitTask} disabled={submitting}>
+                      {submitting ? "Submitting..." : "Submit for Review"}
+                    </Button>
+                  )}
+                  {/* Forward button only for creator or managerial roles */}
+                  {(task.CreatedBy === currentUser?.id ||
+                    ["management", "branch_manager", "area_manager"].includes(
+                      currentUser?.role || ""
+                    )) && (
+                    <Button
+                      variant="outline"
+                      onClick={forwardTask}
+                      disabled={submitting}
+                    >
+                      <ArrowUp className="h-4 w-4 mr-2" />
+                      Forward Now
+                    </Button>
+                  )}
                 </>
               )}
               {task.Status === "submitted" && canApproveTask() && (
@@ -698,7 +772,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                 Complete all items to finish the task.{" "}
                 {task.Status === "expired" &&
                   "This task has expired and is read-only."}
-                {!canEditChecklist &&
+                {!canModifyChecklist &&
                   !isLocked &&
                   " Only assigned users can edit the checklist."}
               </CardDescription>
@@ -784,7 +858,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                             item.Notes
                           )
                         }
-                        disabled={!canEditChecklist}
+                        disabled={!canModifyChecklist}
                       />
                       <div className="flex-1 space-y-2">
                         <label
@@ -815,7 +889,7 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                           }
                           className="text-sm"
                           rows={2}
-                          disabled={!canEditChecklist}
+                          disabled={!canModifyChecklist}
                         />
                         {/* Display photos if any */}
                         {/* Photo upload section */}
@@ -888,8 +962,8 @@ export function TaskDetails({ taskId }: TaskDetailsProps) {
                   </div>
                 ))
               )}
-              {/* Add new checklist item UI */}
-              {canEditChecklist && (
+              {/* Add new checklist item UI (only visible to creator/managers) */}
+              {canAddChecklistItem && (
                 <div className="space-y-2 pt-4">
                   <Textarea
                     placeholder="New checklist item title..."

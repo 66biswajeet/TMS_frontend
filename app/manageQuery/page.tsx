@@ -16,6 +16,7 @@ import {
   Send,
   Eye,
 } from "lucide-react";
+import { showSuccess, showError } from "@/lib/toast";
 
 const API_BASE_URL = `${process.env.NEXT_PUBLIC_API_BASE_URL}/attendance`;
 
@@ -600,9 +601,15 @@ export default function QueryResolutionPortal() {
     });
 
     if (res.ok) {
+      const statusMessage = status === "Resolved" 
+        ? "Query resolved successfully!" 
+        : "Query rejected successfully!";
+      showSuccess(statusMessage);
       await fetchQueries();
     } else {
-      throw new Error(res.data.message || "Failed to resolve query");
+      const errorMessage = res.data.message || "Failed to resolve query";
+      showError(errorMessage);
+      throw new Error(errorMessage);
     }
   };
 

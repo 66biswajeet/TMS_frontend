@@ -32,6 +32,17 @@ export function initializeSocket(token: string): Socket {
     taskMonitor.start();
   });
 
+  // Dev visibility: log any incoming events to help identify names/mismatches
+  try {
+    // onAny exists in socket.io-client v3+
+    (socket as any).onAny?.((event: string, ...args: any[]) => {
+      // Keep logs concise in production; comment out if too noisy
+      console.log("[socket:onAny]", event, args?.[0]);
+    });
+  } catch (e) {
+    // ignore
+  }
+
   socket.on("disconnect", (reason) => {
     console.log("Socket disconnected:", reason);
   });

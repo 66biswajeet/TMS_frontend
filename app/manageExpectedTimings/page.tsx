@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Label } from "@/components/ui/label"; // <-- ADD THIS
 import { Input } from "@/components/ui/input";
+import { showSuccess, showError } from "@/lib/toast";
 
 // --- CONFIGURATION ---
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL; // <-- REMOVED /api prefix
@@ -320,7 +321,11 @@ const ConfigModal: React.FC<{
     try {
       // 1. Save Timings
       if (!timingsData.ExpectedCheckIn || !timingsData.ExpectedCheckOut) {
-        throw new Error("Check-In and Check-Out times are required.");
+        const errorMsg = "Check-In and Check-Out times are required.";
+        setError(errorMsg);
+        showError(errorMsg);
+        setSaving(false);
+        return;
       }
       await fetchApi(`/users/expected-timings`, "POST", timingsData);
 
@@ -331,10 +336,13 @@ const ConfigModal: React.FC<{
         availabilityData
       );
 
+      showSuccess("Expected timings and availability updated successfully!");
       onSaveSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.message || "Failed to save configuration.");
+      const errorMsg = err.message || "Failed to save configuration.";
+      setError(errorMsg);
+      showError(errorMsg);
       setSaving(false);
     }
   };

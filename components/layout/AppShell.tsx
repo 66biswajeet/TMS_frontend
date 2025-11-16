@@ -117,10 +117,6 @@ interface AppShellProps {
 export function AppShell({ children, className }: AppShellProps) {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = React.useState(false);
-  // const [userRole, setUserRole] = React.useState("staff"); // <-- 1. REMOVED
-  const notificationCount = useSelector(
-    (state: RootState) => state.ui.notificationCount
-  );
   const [isClient, setIsClient] = React.useState(false);
 
   // Get auth state from Redux
@@ -186,10 +182,7 @@ export function AppShell({ children, className }: AppShellProps) {
         )}
       >
         {/* Header */}
-        <Header
-          onMenuClick={handleSidebarToggle}
-          notificationCount={notificationCount}
-        />
+        <Header onMenuClick={handleSidebarToggle} />
 
         {/* Realtime & socket initialization (mounts only inside AppShell when user is authenticated/layout is shown) */}
         <RealtimeProvider />

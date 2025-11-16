@@ -591,34 +591,46 @@ export function BranchesManagement() {
     setIsDialogOpen(true);
   };
 
-  const handleDeleteBranch = (branchId: string) => {
+  const handleDeleteBranch = async (branchId: string) => {
     if (confirm("Are you sure you want to delete this branch?")) {
-      dispatch(deleteBranch(branchId) as any).then(() => {
+      try {
+        await dispatch(deleteBranch(branchId) as any);
+        showSuccess("Branch deleted successfully!");
         // Refresh the branches list after deleting a branch
         dispatch(fetchBranches() as any);
-      });
+      } catch (error) {
+        console.error("Failed to delete branch:", error);
+        showError("Failed to delete branch. Please try again.");
+      }
     }
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (editingBranch) {
-      // Update existing branch
-      dispatch(updateBranch(editingBranch.BranchId, formData) as any).then(
-        () => {
-          // Refresh the branches list after updating a branch
-          dispatch(fetchBranches() as any);
-          setIsDialogOpen(false);
-        }
-      );
-    } else {
-      // Create new branch
-      dispatch(createBranch(formData) as any).then(() => {
+    try {
+      if (editingBranch) {
+        // Update existing branch
+        await dispatch(updateBranch(editingBranch.BranchId, formData) as any);
+        showSuccess(`Branch "${formData.BranchName}" updated successfully!`);
+        // Refresh the branches list after updating a branch
+        dispatch(fetchBranches() as any);
+        setIsDialogOpen(false);
+      } else {
+        // Create new branch
+        await dispatch(createBranch(formData) as any);
+        showSuccess(`Branch "${formData.BranchName}" created successfully!`);
         // Refresh the branches list after creating a new branch
         dispatch(fetchBranches() as any);
         setIsDialogOpen(false);
-      });
+      }
+    } catch (error: any) {
+      console.error("Failed to save branch:", error);
+      const errorMessage =
+        error?.response?.data?.message ||
+        error?.message ||
+        "Failed to save branch. Please try again.";
+      showError(errorMessage);
     }
   };
 

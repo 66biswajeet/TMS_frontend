@@ -7,6 +7,8 @@ import {
 } from "../../src/utils/notification.utils";
 
 import CameraModal from "@/components/CameraCapture";
+import { showSuccess, showError } from "@/lib/toast";
+import { useNotifications } from "@/lib/notifications-context";
 
 const OFFICE_RADIUS_METERS = 100;
 
@@ -433,6 +435,9 @@ export default function AttendancePage() {
   const [showQueryForm, setShowQueryForm] = useState<boolean>(false);
 
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<
+    "checkinout" | "history" | "query"
+  >("checkinout");
 
   // NEW STATE: Expected Timings
   const [expectedTimings, setExpectedTimings] =
@@ -443,9 +448,18 @@ export default function AttendancePage() {
     useState<boolean>(false); //
   const [isBeforeExpectedCheckOut, setIsBeforeExpectedCheckOut] =
     useState<boolean>(false);
+  const [isBeforeExpectedBreakIn, setIsBeforeExpectedBreakIn] =
+    useState<boolean>(false);
+  const [isAfterExpectedBreakOut, setIsAfterExpectedBreakOut] =
+    useState<boolean>(false);
+  const [isBeforeExpectedBreakOut, setIsBeforeExpectedBreakOut] =
+    useState<boolean>(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const proofInputRef = useRef<HTMLInputElement>(null);
+
+  // Notifications hook
+  const { addNotification } = useNotifications();
 
   const uploadFile = async (file: File) => {
     const token = window.localStorage?.getItem("token");
@@ -762,10 +776,49 @@ export default function AttendancePage() {
         }, timeUntilCheckInMs);
       }
 
-      // Validation Flags
+      // Validation Flags for Check-In/Out
       setIsBeforeExpectedCheckIn(now < expectedCheckInDate);
       setIsAfterExpectedCheckOut(now > expectedCheckOutDate); // <-- This is the key flag
       setIsBeforeExpectedCheckOut(now < expectedCheckOutDate);
+
+      // Validation Flags for Break-In/Out
+      if (
+        expectedTimings.ExpectedBreakIn &&
+        timeRegex.test(expectedTimings.ExpectedBreakIn)
+      ) {
+        const [breakInHours, breakInMinutes, breakInSeconds] =
+          expectedTimings.ExpectedBreakIn.split(":").map(Number);
+        const expectedBreakInDate = new Date();
+        expectedBreakInDate.setHours(
+          breakInHours,
+          breakInMinutes,
+          breakInSeconds,
+          0
+        );
+        setIsBeforeExpectedBreakIn(now < expectedBreakInDate);
+      } else {
+        setIsBeforeExpectedBreakIn(false);
+      }
+
+      if (
+        expectedTimings.ExpectedBreakOut &&
+        timeRegex.test(expectedTimings.ExpectedBreakOut)
+      ) {
+        const [breakOutHours, breakOutMinutes, breakOutSeconds] =
+          expectedTimings.ExpectedBreakOut.split(":").map(Number);
+        const expectedBreakOutDate = new Date();
+        expectedBreakOutDate.setHours(
+          breakOutHours,
+          breakOutMinutes,
+          breakOutSeconds,
+          0
+        );
+        setIsAfterExpectedBreakOut(now > expectedBreakOutDate);
+        setIsBeforeExpectedBreakOut(now < expectedBreakOutDate);
+      } else {
+        setIsAfterExpectedBreakOut(false);
+        setIsBeforeExpectedBreakOut(false);
+      }
 
       validationTimer = setTimeout(checkTime, 10000);
     };
@@ -905,12 +958,23 @@ export default function AttendancePage() {
         });
         if (checkInRes.ok) {
           setLocationStatus(`✅ Check-In Success!`);
+          showSuccess("Check-In successful!");
+          addNotification({
+            type: "success",
+            title: "Check-In Successful",
+            message: `You have successfully checked in at ${new Date().toLocaleTimeString()}`,
+          });
           await fetchAttendanceRecord();
           await fetchAttendanceHistory();
         } else {
-          setLocationStatus(
-            `❌ Check-In Failed: ${checkInRes.data.message || "Server error."}`
-          );
+          const errorMsg = checkInRes.data.message || "Server error.";
+          setLocationStatus(`❌ Check-In Failed: ${errorMsg}`);
+          showError(`Check-In failed: ${errorMsg}`);
+          addNotification({
+            type: "error",
+            title: "Check-In Failed",
+            message: errorMsg,
+          });
         }
       } catch (error) {
         setLocationStatus("Network error during check-in.");
@@ -919,7 +983,12 @@ export default function AttendancePage() {
         if (e.target) (e.target as HTMLInputElement).value = "";
       }
     },
-    [userLocation, fetchAttendanceRecord, fetchAttendanceHistory]
+    [
+      userLocation,
+      fetchAttendanceRecord,
+      fetchAttendanceHistory,
+      addNotification,
+    ]
   );
 
   const handleSelfieCaptureFromCamera = async (file: File) => {
@@ -945,12 +1014,23 @@ export default function AttendancePage() {
       });
       if (checkInRes.ok) {
         setLocationStatus(`✅ Check-In Success!`);
+        showSuccess("Check-In successful!");
+        addNotification({
+          type: "success",
+          title: "Check-In Successful",
+          message: `You have successfully checked in at ${new Date().toLocaleTimeString()}`,
+        });
         await fetchAttendanceRecord();
         await fetchAttendanceHistory();
       } else {
-        setLocationStatus(
-          `❌ Check-In Failed: ${checkInRes.data.message || "Server error."}`
-        );
+        const errorMsg = checkInRes.data.message || "Server error.";
+        setLocationStatus(`❌ Check-In Failed: ${errorMsg}`);
+        showError(`Check-In failed: ${errorMsg}`);
+        addNotification({
+          type: "error",
+          title: "Check-In Failed",
+          message: errorMsg,
+        });
       }
     } catch (error) {
       setLocationStatus("Network error during check-in.");
@@ -986,6 +1066,12 @@ export default function AttendancePage() {
       const result = await postData(`${API_BASE_URL}/check-out`, {});
       if (result.ok) {
         setLocationStatus(`✅ Check-Out Success!`);
+        showSuccess("Check-Out successful!");
+        addNotification({
+          type: "success",
+          title: "Check-Out Successful",
+          message: `You have successfully checked out at ${new Date().toLocaleTimeString()}`,
+        });
 
         // --- OPTIMISTIC UPDATE ---
         const optimisticCheckOutTime = new Date().toISOString(); // Store the current time
@@ -1013,9 +1099,14 @@ export default function AttendancePage() {
 
         await fetchAttendanceHistory(); // Keep history fetch as well
       } else {
-        setLocationStatus(
-          `❌ Check-Out Failed: ${result.data.message || "Server error."}`
-        );
+        const errorMsg = result.data.message || "Server error.";
+        setLocationStatus(`❌ Check-Out Failed: ${errorMsg}`);
+        showError(`Check-Out failed: ${errorMsg}`);
+        addNotification({
+          type: "error",
+          title: "Check-Out Failed",
+          message: errorMsg,
+        });
       }
     } catch (error) {
       setLocationStatus("Network error during check-out.");
@@ -1062,6 +1153,8 @@ export default function AttendancePage() {
       !!record?.CheckOutAt || // Can't take break after checkout
       isBeforeExpectedCheckIn || // Too early
       isAfterExpectedCheckOut || // Too late
+      isBeforeExpectedBreakIn || // Before expected break-in time
+      isAfterExpectedBreakOut || // After expected break-out time (break window closed)
       isOffDayToday // Off day
     );
   }, [
@@ -1073,6 +1166,8 @@ export default function AttendancePage() {
     record?.CheckOutAt,
     isBeforeExpectedCheckIn,
     isAfterExpectedCheckOut,
+    isBeforeExpectedBreakIn,
+    isAfterExpectedBreakOut,
     isOffDayToday,
   ]);
 
@@ -1085,6 +1180,7 @@ export default function AttendancePage() {
       !!record?.CheckOutAt || // Can't end break after checkout
       isBeforeExpectedCheckIn || // Too early
       isAfterExpectedCheckOut || // Too late
+      isBeforeExpectedBreakOut || // Before expected break-out time (too early to end break)
       isOffDayToday // Off day
     );
   }, [
@@ -1095,50 +1191,148 @@ export default function AttendancePage() {
     record?.CheckOutAt,
     isBeforeExpectedCheckIn,
     isAfterExpectedCheckOut,
+    isBeforeExpectedBreakOut,
     isOffDayToday,
   ]);
 
   const handleBreakIn = useCallback(async () => {
+    // Check if break-in is blocked and show appropriate message
+    if (isBreakInBlocked) {
+      let statusMessage = "Break-In blocked.";
+      if (!userLocation || isButtonDisabled) {
+        statusMessage = "Out of office range or GPS not ready.";
+      } else if (!record?.CheckInAt) {
+        statusMessage = "Break-In blocked. You must check in first.";
+      } else if (!!record?.BreakInAt) {
+        statusMessage = "Break-In blocked. Already on break.";
+      } else if (!!record?.CheckOutAt) {
+        statusMessage = "Break-In blocked. Cannot take break after checkout.";
+      } else if (isBeforeExpectedBreakIn && expectedTimings?.ExpectedBreakIn) {
+        const expectedTimeDisplay = formatTime(expectedTimings.ExpectedBreakIn);
+        statusMessage = `Break-In blocked. Must wait until ${expectedTimeDisplay} (Expected Break-In Time).`;
+      } else if (isAfterExpectedBreakOut && expectedTimings?.ExpectedBreakOut) {
+        const expectedTimeDisplay = formatTime(
+          expectedTimings.ExpectedBreakOut
+        );
+        statusMessage = `Break-In blocked. Break window ended at ${expectedTimeDisplay}.`;
+      } else if (isOffDayToday) {
+        statusMessage = "Break-In blocked. Today is your weekly off day.";
+      }
+      setLocationStatus(statusMessage);
+      showError(statusMessage);
+      return;
+    }
+
     setIsProcessing(true);
     setLocationStatus("Sending break-in request...");
     try {
       const result = await postData(`${API_BASE_URL}/break-in`, {});
       if (result.ok) {
         setLocationStatus(`✅ Break-In Success!`);
+        showSuccess("Break-In successful!");
+        addNotification({
+          type: "success",
+          title: "Break Started",
+          message: `You started your break at ${new Date().toLocaleTimeString()}`,
+        });
         await fetchAttendanceRecord();
         await fetchAttendanceHistory();
       } else {
-        setLocationStatus(
-          `❌ Break-In Failed: ${result.data.message || "Server error."}`
-        );
+        const errorMsg = result.data.message || "Server error.";
+        setLocationStatus(`❌ Break-In Failed: ${errorMsg}`);
+        showError(`Break-In failed: ${errorMsg}`);
+        addNotification({
+          type: "error",
+          title: "Break-In Failed",
+          message: errorMsg,
+        });
       }
     } catch (error) {
       setLocationStatus("Network error during break-in.");
+      showError("Network error during break-in.");
     } finally {
       setIsProcessing(false);
     }
-  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+  }, [
+    isBreakInBlocked,
+    userLocation,
+    isButtonDisabled,
+    record,
+    isBeforeExpectedBreakIn,
+    isAfterExpectedBreakOut,
+    expectedTimings,
+    isOffDayToday,
+    fetchAttendanceRecord,
+    fetchAttendanceHistory,
+    addNotification,
+  ]);
 
   const handleBreakOut = useCallback(async () => {
+    // Check if break-out is blocked and show appropriate message
+    if (isBreakOutBlocked) {
+      let statusMessage = "Break-Out blocked.";
+      if (!record?.BreakInAt) {
+        statusMessage = "Break-Out blocked. You must start break first.";
+      } else if (!!record?.BreakOutAt) {
+        statusMessage = "Break-Out blocked. Already ended break.";
+      } else if (!!record?.CheckOutAt) {
+        statusMessage = "Break-Out blocked. Cannot end break after checkout.";
+      } else if (
+        isBeforeExpectedBreakOut &&
+        expectedTimings?.ExpectedBreakOut
+      ) {
+        const expectedTimeDisplay = formatTime(
+          expectedTimings.ExpectedBreakOut
+        );
+        statusMessage = `Break-Out blocked. Must wait until ${expectedTimeDisplay} (Expected Break-Out Time).`;
+      } else if (isOffDayToday) {
+        statusMessage = "Break-Out blocked. Today is your weekly off day.";
+      }
+      setLocationStatus(statusMessage);
+      showError(statusMessage);
+      return;
+    }
+
     setIsProcessing(true);
     setLocationStatus("Sending break-out request...");
     try {
       const result = await postData(`${API_BASE_URL}/break-out`, {});
       if (result.ok) {
         setLocationStatus(`✅ Break-Out Success!`);
+        showSuccess("Break-Out successful!");
+        addNotification({
+          type: "success",
+          title: "Break Ended",
+          message: `You ended your break at ${new Date().toLocaleTimeString()}`,
+        });
         await fetchAttendanceRecord();
         await fetchAttendanceHistory();
       } else {
-        setLocationStatus(
-          `❌ Break-In Failed: ${result.data.message || "Server error."}`
-        );
+        const errorMsg = result.data.message || "Server error.";
+        setLocationStatus(`❌ Break-Out Failed: ${errorMsg}`);
+        showError(`Break-Out failed: ${errorMsg}`);
+        addNotification({
+          type: "error",
+          title: "Break-Out Failed",
+          message: errorMsg,
+        });
       }
     } catch (error) {
       setLocationStatus("Network error during break-out.");
+      showError("Network error during break-out.");
     } finally {
       setIsProcessing(false);
     }
-  }, [fetchAttendanceRecord, fetchAttendanceHistory]);
+  }, [
+    isBreakOutBlocked,
+    record,
+    isBeforeExpectedBreakOut,
+    expectedTimings,
+    isOffDayToday,
+    fetchAttendanceRecord,
+    fetchAttendanceHistory,
+    addNotification,
+  ]);
 
   const refreshAll = useCallback(() => {
     fetchAttendanceRecord();
@@ -1189,6 +1383,12 @@ export default function AttendancePage() {
       const result = await postData(`${API_BASE_URL}/query`, queryData);
       if (result.ok) {
         setQueryStatus("✅ Query submitted successfully!");
+        showSuccess("Query submitted successfully!");
+        addNotification({
+          type: "success",
+          title: "Query Submitted",
+          message: `Your query "${querySubject}" has been submitted for review`,
+        });
         setQuerySubject("");
         setQueryMessage("");
         setQueryProofFile(null);
@@ -1196,18 +1396,27 @@ export default function AttendancePage() {
         await fetchQueries();
         setTimeout(() => setShowQueryForm(false), 1500);
       } else {
-        setQueryStatus(
-          `❌ Query submission failed: ${
-            result.data.message || "Server error."
-          }`
-        );
+        const errorMsg = result.data.message || "Server error.";
+        setQueryStatus(`❌ Query submission failed: ${errorMsg}`);
+        showError(`Query submission failed: ${errorMsg}`);
+        addNotification({
+          type: "error",
+          title: "Query Submission Failed",
+          message: errorMsg,
+        });
       }
     } catch (error) {
       setQueryStatus("❌ Network error during query submission.");
     } finally {
       setIsSubmittingQuery(false);
     }
-  }, [querySubject, queryMessage, queryProofFile, fetchQueries]);
+  }, [
+    querySubject,
+    queryMessage,
+    queryProofFile,
+    fetchQueries,
+    addNotification,
+  ]);
 
   const handleProofFileChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1340,7 +1549,7 @@ export default function AttendancePage() {
             </h1>
             <div className="flex items-center gap-4">
               {expectedTimings && (
-                <div className="flex gap-4 text-sm">
+                <div className="flex flex-wrap gap-3 text-sm">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-green-600" />
                     <span className="text-gray-600">Expected In:</span>
@@ -1355,6 +1564,24 @@ export default function AttendancePage() {
                       {formatTime(expectedTimings.ExpectedCheckOut)}
                     </span>
                   </div>
+                  {expectedTimings.ExpectedBreakIn && (
+                    <div className="hidden lg:flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-blue-600" />
+                      <span className="text-gray-600">Break In:</span>
+                      <span className="font-bold text-blue-700">
+                        {formatTime(expectedTimings.ExpectedBreakIn)}
+                      </span>
+                    </div>
+                  )}
+                  {expectedTimings.ExpectedBreakOut && (
+                    <div className="hidden lg:flex items-center gap-2">
+                      <Clock className="w-4 h-4 text-orange-600" />
+                      <span className="text-gray-600">Break Out:</span>
+                      <span className="font-bold text-orange-700">
+                        {formatTime(expectedTimings.ExpectedBreakOut)}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
               <Button
@@ -1373,465 +1600,524 @@ export default function AttendancePage() {
           </div>
         </div>
 
-        {/* Location Status Card (Updated with Expected Time Status) */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90 transform hover:scale-[1.02] transition-all duration-300">
-          <div className="flex items-start gap-4">
-            <div
-              className={`p-3 rounded-xl ${
-                isButtonDisabled ? "bg-red-100" : "bg-green-100"
+        {/* Tab Navigation */}
+        <div className="bg-white rounded-2xl shadow-xl p-2 border border-gray-100">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setActiveTab("checkinout")}
+              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === "checkinout"
+                  ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
               }`}
             >
-              <MapPin
-                className={`w-6 h-6 ${
-                  isButtonDisabled ? "text-red-600" : "text-green-600"
-                }`}
-              />
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-semibold text-gray-600 mb-1">
-                Live Location Status
-              </p>
-              <p
-                className={`text-lg font-bold ${
-                  isButtonDisabled ? "text-red-600" : "text-green-600"
-                }`}
-              >
-                {locationStatus}
-              </p>
-            </div>
-          </div>
-          {/* NEW: Expected Time Status Display */}
-          {expectedTimings &&
-            (isBeforeExpectedCheckIn || isAfterExpectedCheckOut) && (
-              <div className="mt-4 p-3 bg-red-50 border border-red-300 rounded-lg">
-                <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
-                  <Clock className="w-4 h-4" />
-                  Attendance Blocked
-                </p>
-                {isBeforeExpectedCheckIn && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Check-In Not Allowed Yet. Expected Check-In Time: **
-                    {formatTime(expectedTimings.ExpectedCheckIn)}**.
-                  </p>
-                )}
-                {isAfterExpectedCheckOut && (
-                  <p className="text-xs text-red-600 mt-1">
-                    Check-In/Check-Out window has closed. Expected Check-Out
-                    Time: **{formatTime(expectedTimings.ExpectedCheckOut)}**.
-                  </p>
-                )}
+              <div className="flex items-center justify-center gap-2">
+                <Clock className="w-5 h-5" />
+                <span>Check In/Out</span>
               </div>
-            )}
-        </div>
-
-        {/* Today's Record Card */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
-          <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800">
-            <Calendar className="w-6 h-6 text-indigo-600" />
-            Today's Record
-          </h2>
-          {loading ? (
-            <div className="text-gray-500 flex items-center justify-center p-8">
-              <RefreshCw className="w-6 h-6 animate-spin mr-3" />
-              <span className="text-lg">Loading...</span>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Check-in Time
-                </p>
-                <p className="text-3xl font-extrabold text-green-700">
-                  {formatTime(record?.CheckInAt || null)}
-                </p>
-              </div>
-
-              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Check-out Time
-                </p>
-
-                <p className="text-3xl font-extrabold text-red-700">
-                  {formatTime(record?.CheckOutAt || null)}
-                </p>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Total Duration
-                </p>
-                <p className="text-3xl font-extrabold text-blue-700">
-                  {currentDuration}
-                </p>
-              </div>
-
-              <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Break-In Time
-                </p>
-                <p className="text-3xl font-extrabold text-green-700">
-                  {formatTime(record?.BreakInAt || null)}
-                </p>
-              </div>
-
-              <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Break-out Time
-                </p>
-                <p className="text-3xl font-extrabold text-red-700">
-                  {formatTime(record?.BreakOutAt || null)}
-                </p>
-              </div>
-
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
-                <p className="text-sm font-semibold text-gray-600 mb-2">
-                  Total Duration
-                </p>
-                <p className="text-3xl font-extrabold text-blue-700">
-                  {currentBreakDuration}
-                </p>
-              </div>
-            </div>
-          )}
-        </div>
-
-        {/* --- "On Leave" BANNER REMOVED --- */}
-
-        {/* --- ADD THIS NEW BANNER --- */}
-        {isOffDayToday && (
-          <div className="mb-4 rounded-lg border border-gray-300 bg-gray-100 p-3 text-sm text-gray-800">
-            Today is your scheduled weekly off day. All attendance actions are
-            disabled.
-          </div>
-        )}
-        {/* Action Buttons */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Button
-            onClick={handleCheckIn}
-            disabled={isCheckInBlocked}
-            variant="success"
-            className="w-full py-4 text-lg"
-          >
-            {isProcessing && !record?.CheckInAt ? (
-              <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                Checking In...
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <CheckCircle className="w-5 h-5" />
-                Check In
-              </span>
-            )}
-          </Button>
-
-          {/* --- FIXED: This button now uses the correct variable --- */}
-          <Button
-            variant="danger"
-            onClick={handleCheckOut}
-            disabled={isCheckOutBlocked} // <-- USE THE REAL VARIABLE
-            className="w-full py-4 text-lg"
-          >
-            {isProcessing && record?.CheckInAt && !record?.CheckOutAt ? (
-              <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                Checking Out...
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <XCircle className="w-5 h-5" />
-                Check Out
-              </span>
-            )}
-          </Button>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <Button
-            onClick={handleBreakIn}
-            disabled={isBreakInBlocked}
-            variant="success"
-            className="w-full py-4 text-lg"
-          >
-            {isProcessing && !record?.BreakInAt ? (
-              <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                Starting Break...
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <CheckCircle className="w-5 h-5" />
-                Break In
-              </span>
-            )}
-          </Button>
-          <Button
-            onClick={handleBreakOut}
-            disabled={isBreakOutBlocked}
-            variant="danger"
-            className="w-full py-4 text-lg"
-          >
-            {isProcessing && record?.BreakInAt && !record?.BreakOutAt ? (
-              <span className="flex items-center justify-center gap-2">
-                <RefreshCw className="w-5 h-5 animate-spin" />
-                Ending Break...
-              </span>
-            ) : (
-              <span className="flex items-center justify-center gap-2">
-                <XCircle className="w-5 h-5" />
-                Break Out
-              </span>
-            )}
-          </Button>
-        </div>
-
-        {showCameraModal && (
-          <CameraModal
-            onCapture={handleSelfieCaptureFromCamera}
-            onClose={() => setShowCameraModal(false)}
-          />
-        )}
-
-        {/* Attendance History */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
-          <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
-            <Calendar className="w-6 h-6 text-indigo-600" />
-            Attendance History
-          </h2>
-          {historyLoading ? (
-            <div className="text-gray-500 flex items-center justify-center p-8">
-              <RefreshCw className="w-6 h-6 animate-spin mr-3" />
-              <span>Loading History...</span>
-            </div>
-          ) : history.length === 0 ? (
-            <p className="text-gray-500 p-6 bg-gray-50 rounded-xl text-center">
-              No records found.
-            </p>
-          ) : (
-            <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
-              {history.map((hist, index) => (
-                <div
-                  key={hist.WorkDate || index}
-                  className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
-                >
-                  <div className="flex flex-col mb-3 md:mb-0">
-                    <span className="font-bold text-lg text-indigo-600">
-                      {formatDate(hist.WorkDate)}
-                    </span>
-                    <span className="text-sm text-gray-500 flex items-center gap-1 mt-1">
-                      <Clock className="w-4 h-4" />
-                      {calculateDuration(hist.CheckInAt, hist.CheckOutAt)} Total
-                    </span>
-                  </div>
-                  <div className="flex gap-6 text-sm">
-                    <div className="flex flex-col items-center bg-green-50 px-4 py-2 rounded-lg border border-green-200">
-                      <CheckCircle className="w-5 h-5 text-green-600 mb-1" />
-                      <span className="text-xs text-gray-500">In</span>
-                      <span className="font-bold text-green-700">
-                        {formatTime(hist.CheckInAt)}
-                      </span>
-                    </div>
-                    <div
-                      className={`flex flex-col items-center px-4 py-2 rounded-lg border ${
-                        hist.CheckOutAt
-                          ? "bg-red-50 border-red-200"
-                          : "bg-yellow-50 border-yellow-200"
-                      }`}
-                    >
-                      <XCircle
-                        className={`w-5 h-5 mb-1 ${
-                          hist.CheckOutAt ? "text-red-600" : "text-yellow-600"
-                        }`}
-                      />
-                      <span className="text-xs text-gray-500">Out</span>
-                      <span
-                        className={`font-bold ${
-                          hist.CheckOutAt ? "text-red-700" : "text-yellow-700"
-                        }`}
-                      >
-                        {formatTime(hist.CheckOutAt)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Query Section */}
-        <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
-              <MessageSquare className="w-6 h-6 text-indigo-600" />
-              Support Queries
-            </h2>
-            <Button
-              onClick={() => setShowQueryForm(!showQueryForm)}
-              className="px-4 py-2"
+            </button>
+            <button
+              onClick={() => setActiveTab("history")}
+              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === "history"
+                  ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
             >
-              {showQueryForm ? "Hide Form" : "Raise Query"}
-            </Button>
+              <div className="flex items-center justify-center gap-2">
+                <Calendar className="w-5 h-5" />
+                <span>Attendance History</span>
+              </div>
+            </button>
+            <button
+              onClick={() => setActiveTab("query")}
+              className={`flex-1 py-3 px-6 rounded-xl font-semibold transition-all duration-300 ${
+                activeTab === "query"
+                  ? "bg-gradient-to-r from-indigo-600 to-purple-600 text-white shadow-lg"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
+              }`}
+            >
+              <div className="flex items-center justify-center gap-2">
+                <MessageSquare className="w-5 h-5" />
+                <span>Raise Query</span>
+              </div>
+            </button>
           </div>
+        </div>
 
-          {showQueryForm && (
-            <div className="mb-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6 space-y-4 animate-in">
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Subject *
-                </label>
-                <input
-                  type="text"
-                  value={querySubject}
-                  onChange={(e) => setQuerySubject(e.target.value)}
-                  placeholder="e.g., Forgot to Check Out"
-                  className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
-                  disabled={isSubmittingQuery}
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-bold text-gray-700 mb-2">
-                  Message *
-                </label>
-                <textarea
-                  value={queryMessage}
-                  onChange={(e) => setQueryMessage(e.target.value)}
-                  placeholder="Describe your query in detail..."
-                  rows={4}
-                  className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all duration-300"
-                  disabled={isSubmittingQuery}
-                />
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
-                  <Paperclip className="w-4 h-4" />
-                  Attach Proof (Optional)
-                </label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  ref={proofInputRef}
-                  onChange={handleProofFileChange}
-                  className="w-full text-sm text-gray-600 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 file:cursor-pointer transition-all duration-300"
-                  disabled={isSubmittingQuery}
-                />
-                {queryProofFile && (
-                  <p className="text-sm text-green-600 mt-2 flex items-center gap-2 bg-green-50 px-3 py-2 rounded-lg">
-                    <CheckCircle className="w-4 h-4" />
-                    {queryProofFile.name}
-                  </p>
-                )}
-              </div>
-
-              {queryStatus && (
+        {/* Tab Content: Check In/Out */}
+        {activeTab === "checkinout" && (
+          <>
+            {/* Location Status Card (Updated with Expected Time Status) */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90 transform hover:scale-[1.02] transition-all duration-300">
+              <div className="flex items-start gap-4">
                 <div
-                  className={`p-4 rounded-xl font-medium ${
-                    queryStatus.includes("✅")
-                      ? "bg-green-100 text-green-800"
-                      : "bg-red-100 text-red-800"
+                  className={`p-3 rounded-xl ${
+                    isButtonDisabled ? "bg-red-100" : "bg-green-100"
                   }`}
                 >
-                  {queryStatus}
+                  <MapPin
+                    className={`w-6 h-6 ${
+                      isButtonDisabled ? "text-red-600" : "text-green-600"
+                    }`}
+                  />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold text-gray-600 mb-1">
+                    Live Location Status
+                  </p>
+                  <p
+                    className={`text-lg font-bold ${
+                      isButtonDisabled ? "text-red-600" : "text-green-600"
+                    }`}
+                  >
+                    {locationStatus}
+                  </p>
+                </div>
+              </div>
+              {/* NEW: Expected Time Status Display */}
+              {expectedTimings &&
+                (isBeforeExpectedCheckIn || isAfterExpectedCheckOut) && (
+                  <div className="mt-4 p-3 bg-red-50 border border-red-300 rounded-lg">
+                    <p className="text-sm text-red-700 font-semibold flex items-center gap-2">
+                      <Clock className="w-4 h-4" />
+                      Attendance Blocked
+                    </p>
+                    {isBeforeExpectedCheckIn && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Check-In Not Allowed Yet. Expected Check-In Time: **
+                        {formatTime(expectedTimings.ExpectedCheckIn)}**.
+                      </p>
+                    )}
+                    {isAfterExpectedCheckOut && (
+                      <p className="text-xs text-red-600 mt-1">
+                        Check-In/Check-Out window has closed. Expected Check-Out
+                        Time: **{formatTime(expectedTimings.ExpectedCheckOut)}
+                        **.
+                      </p>
+                    )}
+                  </div>
+                )}
+            </div>
+
+            {/* Today's Record Card */}
+            <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+              <h2 className="text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800">
+                <Calendar className="w-6 h-6 text-indigo-600" />
+                Today's Record
+              </h2>
+              {loading ? (
+                <div className="text-gray-500 flex items-center justify-center p-8">
+                  <RefreshCw className="w-6 h-6 animate-spin mr-3" />
+                  <span className="text-lg">Loading...</span>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Check-in Time
+                    </p>
+                    <p className="text-3xl font-extrabold text-green-700">
+                      {formatTime(record?.CheckInAt || null)}
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Check-out Time
+                    </p>
+
+                    <p className="text-3xl font-extrabold text-red-700">
+                      {formatTime(record?.CheckOutAt || null)}
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Total Duration
+                    </p>
+                    <p className="text-3xl font-extrabold text-blue-700">
+                      {currentDuration}
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl p-5 border-2 border-green-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Break-In Time
+                    </p>
+                    <p className="text-3xl font-extrabold text-green-700">
+                      {formatTime(record?.BreakInAt || null)}
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-red-50 to-pink-50 rounded-xl p-5 border-2 border-red-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Break-out Time
+                    </p>
+                    <p className="text-3xl font-extrabold text-red-700">
+                      {formatTime(record?.BreakOutAt || null)}
+                    </p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl p-5 border-2 border-blue-200 transform hover:scale-105 transition-all duration-300 shadow-lg hover:shadow-xl">
+                    <p className="text-sm font-semibold text-gray-600 mb-2">
+                      Total Duration
+                    </p>
+                    <p className="text-3xl font-extrabold text-blue-700">
+                      {currentBreakDuration}
+                    </p>
+                  </div>
                 </div>
               )}
+            </div>
 
+            {/* --- "On Leave" BANNER REMOVED --- */}
+
+            {/* --- ADD THIS NEW BANNER --- */}
+            {isOffDayToday && (
+              <div className="mb-4 rounded-lg border border-gray-300 bg-gray-100 p-3 text-sm text-gray-800">
+                Today is your scheduled weekly off day. All attendance actions
+                are disabled.
+              </div>
+            )}
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <Button
-                onClick={handleSubmitQuery}
-                disabled={
-                  isSubmittingQuery ||
-                  !querySubject.trim() ||
-                  !queryMessage.trim()
-                }
-                className="w-full py-3 text-lg"
+                onClick={handleCheckIn}
+                disabled={isCheckInBlocked}
+                variant="success"
+                className="w-full py-4 text-lg"
               >
-                {isSubmittingQuery ? (
+                {isProcessing && !record?.CheckInAt ? (
                   <span className="flex items-center justify-center gap-2">
                     <RefreshCw className="w-5 h-5 animate-spin" />
-                    Submitting...
+                    Checking In...
                   </span>
                 ) : (
-                  "Submit Query"
+                  <span className="flex items-center justify-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    Check In
+                  </span>
+                )}
+              </Button>
+
+              {/* --- FIXED: This button now uses the correct variable --- */}
+              <Button
+                variant="danger"
+                onClick={handleCheckOut}
+                disabled={isCheckOutBlocked} // <-- USE THE REAL VARIABLE
+                className="w-full py-4 text-lg"
+              >
+                {isProcessing && record?.CheckInAt && !record?.CheckOutAt ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Checking Out...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <XCircle className="w-5 h-5" />
+                    Check Out
+                  </span>
                 )}
               </Button>
             </div>
-          )}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <Button
+                onClick={handleBreakIn}
+                disabled={isBreakInBlocked}
+                variant="success"
+                className="w-full py-4 text-lg"
+              >
+                {isProcessing && !record?.BreakInAt ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Starting Break...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <CheckCircle className="w-5 h-5" />
+                    Break In
+                  </span>
+                )}
+              </Button>
+              <Button
+                onClick={handleBreakOut}
+                disabled={isBreakOutBlocked}
+                variant="danger"
+                className="w-full py-4 text-lg"
+              >
+                {isProcessing && record?.BreakInAt && !record?.BreakOutAt ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <RefreshCw className="w-5 h-5 animate-spin" />
+                    Ending Break...
+                  </span>
+                ) : (
+                  <span className="flex items-center justify-center gap-2">
+                    <XCircle className="w-5 h-5" />
+                    Break Out
+                  </span>
+                )}
+              </Button>
+            </div>
 
-          {/* Query History */}
-          <div>
-            <h3 className="text-lg font-bold text-gray-700 mb-4 border-b-2 border-gray-200 pb-2">
-              Your Query History
-            </h3>
-            {queriesLoading ? (
+            {showCameraModal && (
+              <CameraModal
+                onCapture={handleSelfieCaptureFromCamera}
+                onClose={() => setShowCameraModal(false)}
+              />
+            )}
+          </>
+        )}
+
+        {/* Tab Content: Attendance History */}
+        {activeTab === "history" && (
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+            <h2 className="text-2xl font-bold text-gray-800 mb-4 flex items-center gap-2">
+              <Calendar className="w-6 h-6 text-indigo-600" />
+              Attendance History
+            </h2>
+            {historyLoading ? (
               <div className="text-gray-500 flex items-center justify-center p-8">
                 <RefreshCw className="w-6 h-6 animate-spin mr-3" />
-                <span>Loading Queries...</span>
+                <span>Loading History...</span>
               </div>
-            ) : queries.length === 0 ? (
+            ) : history.length === 0 ? (
               <p className="text-gray-500 p-6 bg-gray-50 rounded-xl text-center">
-                No queries submitted yet.
+                No records found.
               </p>
             ) : (
-              <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
-                {queries.map((query) => (
+              <div className="space-y-3 max-h-80 overflow-y-auto pr-2">
+                {history.map((hist, index) => (
                   <div
-                    key={query.QueryId}
-                    className="bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl p-5 shadow-md hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01]"
+                    key={hist.WorkDate || index}
+                    className="flex flex-col md:flex-row justify-between items-start md:items-center p-4 bg-gradient-to-r from-white to-gray-50 border border-gray-200 rounded-xl shadow-md hover:shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
                   >
-                    <div className="flex flex-col md:flex-row justify-between items-start gap-3 mb-3">
-                      <div className="flex-1">
-                        <h3 className="font-bold text-gray-800 text-lg mb-1">
-                          {query.Subject}
-                        </h3>
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          <Clock className="w-3 h-3" />
-                          {formatDateTime(query.RaisedAt)}
-                        </p>
-                      </div>
-                      <span
-                        className={`px-4 py-2 rounded-full text-xs font-bold border-2 ${getStatusBadge(
-                          query.Status
-                        )} shadow-sm`}
-                      >
-                        {query.Status}
+                    <div className="flex flex-col mb-3 md:mb-0">
+                      <span className="font-bold text-lg text-indigo-600">
+                        {formatDate(hist.WorkDate)}
+                      </span>
+                      <span className="text-sm text-gray-500 flex items-center gap-1 mt-1">
+                        <Clock className="w-4 h-4" />
+                        {calculateDuration(
+                          hist.CheckInAt,
+                          hist.CheckOutAt
+                        )}{" "}
+                        Total
                       </span>
                     </div>
-
-                    <p className="text-sm text-gray-700 mb-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
-                      {query.Message}
-                    </p>
-
-                    {query.Proofurl && (
-                      <div className="mb-3">
-                        <a
-                          href={query.Proofurl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-lg w-fit transition-all duration-300 hover:bg-indigo-100"
+                    <div className="flex gap-6 text-sm">
+                      <div className="flex flex-col items-center bg-green-50 px-4 py-2 rounded-lg border border-green-200">
+                        <CheckCircle className="w-5 h-5 text-green-600 mb-1" />
+                        <span className="text-xs text-gray-500">In</span>
+                        <span className="font-bold text-green-700">
+                          {formatTime(hist.CheckInAt)}
+                        </span>
+                      </div>
+                      <div
+                        className={`flex flex-col items-center px-4 py-2 rounded-lg border ${
+                          hist.CheckOutAt
+                            ? "bg-red-50 border-red-200"
+                            : "bg-yellow-50 border-yellow-200"
+                        }`}
+                      >
+                        <XCircle
+                          className={`w-5 h-5 mb-1 ${
+                            hist.CheckOutAt ? "text-red-600" : "text-yellow-600"
+                          }`}
+                        />
+                        <span className="text-xs text-gray-500">Out</span>
+                        <span
+                          className={`font-bold ${
+                            hist.CheckOutAt ? "text-red-700" : "text-yellow-700"
+                          }`}
                         >
-                          <Paperclip className="w-4 h-4" />
-                          View Attached Proof
-                        </a>
+                          {formatTime(hist.CheckOutAt)}
+                        </span>
                       </div>
-                    )}
-
-                    {query.ResolutionNotes && (
-                      <div className="mt-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
-                        <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1">
-                          <CheckCircle className="w-4 h-4" />
-                          Resolution Notes:
-                        </p>
-                        <p className="text-sm text-green-700 font-medium">
-                          {query.ResolutionNotes}
-                        </p>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
             )}
           </div>
-        </div>
+        )}
+
+        {/* Tab Content: Raise Query */}
+        {activeTab === "query" && (
+          <div className="bg-white rounded-2xl shadow-xl p-6 border border-gray-100 backdrop-blur-lg bg-opacity-90">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-800 flex items-center gap-3">
+                <MessageSquare className="w-6 h-6 text-indigo-600" />
+                Support Queries
+              </h2>
+              <Button
+                onClick={() => setShowQueryForm(!showQueryForm)}
+                className="px-4 py-2"
+              >
+                {showQueryForm ? "Hide Form" : "Raise Query"}
+              </Button>
+            </div>
+
+            {showQueryForm && (
+              <div className="mb-6 bg-gradient-to-br from-indigo-50 to-purple-50 border-2 border-indigo-200 rounded-xl p-6 space-y-4 animate-in">
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Subject *
+                  </label>
+                  <input
+                    type="text"
+                    value={querySubject}
+                    onChange={(e) => setQuerySubject(e.target.value)}
+                    placeholder="e.g., Forgot to Check Out"
+                    className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition-all duration-300"
+                    disabled={isSubmittingQuery}
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-bold text-gray-700 mb-2">
+                    Message *
+                  </label>
+                  <textarea
+                    value={queryMessage}
+                    onChange={(e) => setQueryMessage(e.target.value)}
+                    placeholder="Describe your query in detail..."
+                    rows={4}
+                    className="w-full px-4 py-3 border-2 border-indigo-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none transition-all duration-300"
+                    disabled={isSubmittingQuery}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-sm font-bold text-gray-700 mb-2 flex items-center gap-2">
+                    <Paperclip className="w-4 h-4" />
+                    Attach Proof (Optional)
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    ref={proofInputRef}
+                    onChange={handleProofFileChange}
+                    className="w-full text-sm text-gray-600 file:mr-4 file:py-3 file:px-6 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-indigo-100 file:text-indigo-700 hover:file:bg-indigo-200 file:cursor-pointer transition-all duration-300"
+                    disabled={isSubmittingQuery}
+                  />
+                  {queryProofFile && (
+                    <p className="text-sm text-green-600 mt-2 flex items-center gap-2 bg-green-50 px-3 py-2 rounded-lg">
+                      <CheckCircle className="w-4 h-4" />
+                      {queryProofFile.name}
+                    </p>
+                  )}
+                </div>
+
+                {queryStatus && (
+                  <div
+                    className={`p-4 rounded-xl font-medium ${
+                      queryStatus.includes("✅")
+                        ? "bg-green-100 text-green-800"
+                        : "bg-red-100 text-red-800"
+                    }`}
+                  >
+                    {queryStatus}
+                  </div>
+                )}
+
+                <Button
+                  onClick={handleSubmitQuery}
+                  disabled={
+                    isSubmittingQuery ||
+                    !querySubject.trim() ||
+                    !queryMessage.trim()
+                  }
+                  className="w-full py-3 text-lg"
+                >
+                  {isSubmittingQuery ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-5 h-5 animate-spin" />
+                      Submitting...
+                    </span>
+                  ) : (
+                    "Submit Query"
+                  )}
+                </Button>
+              </div>
+            )}
+
+            {/* Query History */}
+            <div>
+              <h3 className="text-lg font-bold text-gray-700 mb-4 border-b-2 border-gray-200 pb-2">
+                Your Query History
+              </h3>
+              {queriesLoading ? (
+                <div className="text-gray-500 flex items-center justify-center p-8">
+                  <RefreshCw className="w-6 h-6 animate-spin mr-3" />
+                  <span>Loading Queries...</span>
+                </div>
+              ) : queries.length === 0 ? (
+                <p className="text-gray-500 p-6 bg-gray-50 rounded-xl text-center">
+                  No queries submitted yet.
+                </p>
+              ) : (
+                <div className="space-y-4 max-h-96 overflow-y-auto pr-2">
+                  {queries.map((query) => (
+                    <div
+                      key={query.QueryId}
+                      className="bg-gradient-to-r from-white to-gray-50 border-2 border-gray-200 rounded-xl p-5 shadow-md hover:shadow-xl transition-all duration-300 transform hover:scale-[1.01]"
+                    >
+                      <div className="flex flex-col md:flex-row justify-between items-start gap-3 mb-3">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-gray-800 text-lg mb-1">
+                            {query.Subject}
+                          </h3>
+                          <p className="text-xs text-gray-400 flex items-center gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDateTime(query.RaisedAt)}
+                          </p>
+                        </div>
+                        <span
+                          className={`px-4 py-2 rounded-full text-xs font-bold border-2 ${getStatusBadge(
+                            query.Status
+                          )} shadow-sm`}
+                        >
+                          {query.Status}
+                        </span>
+                      </div>
+
+                      <p className="text-sm text-gray-700 mb-3 bg-gray-50 p-3 rounded-lg border border-gray-200">
+                        {query.Message}
+                      </p>
+
+                      {query.Proofurl && (
+                        <div className="mb-3">
+                          <a
+                            href={query.Proofurl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-sm text-indigo-600 hover:text-indigo-800 font-semibold flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-lg w-fit transition-all duration-300 hover:bg-indigo-100"
+                          >
+                            <Paperclip className="w-4 h-4" />
+                            View Attached Proof
+                          </a>
+                        </div>
+                      )}
+
+                      {query.ResolutionNotes && (
+                        <div className="mt-3 p-4 bg-gradient-to-r from-green-50 to-emerald-50 border-2 border-green-300 rounded-xl">
+                          <p className="text-xs font-bold text-green-800 mb-2 flex items-center gap-1">
+                            <CheckCircle className="w-4 h-4" />
+                            Resolution Notes:
+                          </p>
+                          <p className="text-sm text-green-700 font-medium">
+                            {query.ResolutionNotes}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

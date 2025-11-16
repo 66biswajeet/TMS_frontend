@@ -47,13 +47,10 @@ import {
   Users,
   UserCheck,
   Building,
-  Lock, // <-- ADD
-  Copy, // <-- ADD
-  Check, // <-- ADD
 } from "lucide-react";
 // Import the virtualization hook
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { apiFetch } from "@/lib/api";
+import { showSuccess, showError } from "@/lib/toast";
 
 //-- new Changes --
 // --- Debounce Hook (put this in hooks/useDebounce.ts or keep it here) ---
@@ -125,125 +122,6 @@ interface User {
 //   admin: ["System Administrator", "IT Manager"],
 // };
 
-// --- NEW: Reset Password Modal Component ---
-const ResetPasswordModal: React.FC<{
-  userName: string | null;
-  tempPassword?: string | null;
-  onClose: () => void;
-  isLoading: boolean;
-  error?: string | null;
-}> = ({ userName, tempPassword, onClose, isLoading, error }) => {
-  const [copied, setCopied] = useState(false);
-
-  const handleCopy = () => {
-    if (tempPassword) {
-      // Use modern clipboard API first, fallback to execCommand
-      navigator.clipboard
-        .writeText(tempPassword)
-        .then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        })
-        .catch((err) => {
-          console.error("Clipboard API failed:", err);
-          try {
-            // Fallback using execCommand
-            const textArea = document.createElement("textarea");
-            textArea.value = tempPassword;
-            textArea.style.position = "fixed"; // Prevent scrolling
-            textArea.style.opacity = "0";
-            document.body.appendChild(textArea);
-            textArea.focus();
-            textArea.select();
-            document.execCommand("copy");
-            document.body.removeChild(textArea);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 2000);
-          } catch (execErr) {
-            console.error("execCommand fallback failed:", execErr);
-            alert(
-              "Failed to copy password automatically. Please copy it manually."
-            );
-          }
-        });
-    }
-  };
-
-  return (
-    // Use Dialog components from your UI library (e.g., shadcn/ui)
-    <Dialog open={true} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>Password Reset Confirmation</DialogTitle>
-          {userName && (
-            <DialogDescription>
-              For User: <span className="font-semibold">{userName}</span>
-            </DialogDescription>
-          )}
-        </DialogHeader>
-        <div className="py-4 text-center">
-          {isLoading ? (
-            <div className="flex flex-col items-center justify-center min-h-[120px]">
-              {/* <Loader2 className="w-8 h-8 animate-spin text-indigo-500" /> */}
-              <p className="mt-3 text-gray-600">Resetting password...</p>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center min-h-[120px] text-red-600">
-              {/* <AlertTriangle className="w-8 h-8 mb-3" /> */}
-              <p className="font-semibold">Error Resetting Password</p>
-              <p className="text-sm mt-1">{error}</p>
-            </div>
-          ) : tempPassword ? (
-            <>
-              <p className="text-sm text-gray-700 mb-3">
-                Password has been reset. Please securely communicate the
-                following temporary password to the user:
-              </p>
-              <div className="bg-gray-100 border border-gray-300 rounded-lg p-3 flex items-center justify-between mb-4">
-                <span className="font-mono text-lg font-bold text-gray-800 tracking-wider break-all">
-                  {tempPassword}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  onClick={handleCopy}
-                  className={`ml-2 transition ${
-                    copied
-                      ? "bg-green-100 text-green-700 hover:bg-green-200"
-                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-                  }`}
-                  title={copied ? "Copied!" : "Copy password"}
-                >
-                  {copied ? (
-                    <Check className="w-4 h-4" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </Button>
-              </div>
-              <p className="text-xs text-orange-600 font-semibold mb-1">
-                IMPORTANT: Instruct the user to change this password immediately
-                after logging in.
-              </p>
-            </>
-          ) : (
-            <p className="text-red-600">
-              An unexpected error occurred. Temporary password not available.
-            </p>
-          )}
-        </div>
-        {/* Footer is often handled by DialogContent */}
-        {/* Optional: Add explicit close button if needed */}
-        <div className="flex justify-end pt-4 border-t">
-          <Button onClick={onClose} variant="outline">
-            Close
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
-
 export function UsersManagement() {
   const dispatch = useDispatch();
 
@@ -257,13 +135,6 @@ export function UsersManagement() {
   const roles = useSelector((state: RootState) => state.roles.items);
   // ---
 
-  useEffect(() => {
-    dispatch(fetchUsersMinimal() as any);
-    dispatch(fetchBranches() as any);
-    dispatch(fetchPositions() as any);
-    dispatch(fetchRoles() as any);
-  }, [dispatch]);
-
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -274,87 +145,31 @@ export function UsersManagement() {
   // This waits 300ms after the user stops typing before filtering
   const debouncedSearchTerm = useDebounce(searchTerm, 300);
 
-  // --- NEW: Handler for Reset Password Button Click ---
-  // const handleResetPasswordClick = async (userToReset: User) => {
-  //   // Use User type
-  //   // Show modal in loading state immediately
-  //   setResettingUser(userToReset);
-  //   setShowResetModal(true);
-  //   setResetLoading(true);
-  //   setResetError(null);
-  //   setTempPassword(null);
+  // Track if initial load has completed to prevent double fetches
+  const hasInitiallyLoaded = useRef(false);
 
-  //   try {
-  //     // Use your API client (adjust path if your routes are different)
-  //     const response = await apiFetch(
-  //       `/users/${userToReset.id}/admin-reset-password`,
-  //       { method: "POST" }
-  //     );
-  //     console.log("Reset API Response:", response.data);
-
-  //     if (response.data.ok && response.data.temporaryPassword) {
-  //       setTempPassword(response.data.temporaryPassword);
-  //     } else {
-  //       // Use the error message from the API if available
-  //       throw new Error(
-  //         response.data.message || "Failed to get temporary password from API."
-  //       );
-  //     }
-  //   } catch (err: any) {
-  //     console.error("Password reset failed:", err);
-  //     // Display error from API or a generic message
-  //     setResetError(
-  //       err.response?.data?.message ||
-  //         err.message ||
-  //         "An unknown error occurred during password reset."
-  //     );
-  //   } finally {
-  //     setResetLoading(false); // Stop loading indicator regardless of success/fail
-  //   }
-  // };
-
-  // --- NEW: Handler for Reset Password Button Click ---
-  const handleResetPasswordClick = async (userToReset: User) => {
-    // Use User type
-    // Show modal in loading state immediately
-    setResettingUser(userToReset);
-    setShowResetModal(true);
-    setResetLoading(true);
-    setResetError(null);
-    setTempPassword(null);
-
-    try {
-      // Use your API client (adjust path if your routes are different)
-      const response = await apiFetch(
-        `/users/${userToReset.id}/admin-reset-password`,
-        { method: "POST" }
-      );
-
-      // FIX 1: 'response' IS the data. There is no '.data' property.
-      console.log("Reset API Response:", response);
-
-      // FIX 2: Check 'response.ok' and 'response.temporaryPassword' directly
-      if (response.ok && response.temporaryPassword) {
-        setTempPassword(response.temporaryPassword); // <-- FIX 3: Removed .data
-      } else {
-        // Use the error message from the API if available
-        throw new Error(
-          response.message || "Failed to get temporary password from API." // <-- FIX 4: Removed .data
-        );
-      }
-    } catch (err: any) {
-      console.error("Password reset failed:", err);
-      // This catch block is fine and will correctly read the error message
-      setResetError(
-        err.message || "An unknown error occurred during password reset."
-      );
-    } finally {
-      setResetLoading(false); // Stop loading indicator regardless of success/fail
-    }
-  };
-
-  // Re-fetch users when branch filter changes
+  // Fetch initial data in parallel - only once on mount
   useEffect(() => {
+    if (!hasInitiallyLoaded.current) {
+      hasInitiallyLoaded.current = true;
+      // Fetch all data in parallel for faster loading
+      Promise.all([
+        dispatch(fetchUsersMinimal() as any),
+        dispatch(fetchBranches() as any),
+        dispatch(fetchPositions() as any),
+        dispatch(fetchRoles() as any),
+      ]);
+    }
+  }, [dispatch]);
+
+  // Re-fetch users when branch filter changes - but only after initial load
+  useEffect(() => {
+    // Skip on initial mount or if still loading initial data
+    if (!hasInitiallyLoaded.current) return;
+    
+    // Wait for branches to load before filtering
+    if (branches.length === 0) return;
+    
     if (branchFilter === "all") {
       dispatch(fetchUsersMinimal() as any);
     } else {
@@ -384,13 +199,6 @@ export function UsersManagement() {
     status: "active",
   });
 
-  // --- NEW STATE for Reset Modal ---
-  const [showResetModal, setShowResetModal] = useState(false);
-  const [resettingUser, setResettingUser] = useState<User | null>(null); // Store user being reset
-  const [tempPassword, setTempPassword] = useState<string | null>(null);
-  const [resetLoading, setResetLoading] = useState(false);
-  const [resetError, setResetError] = useState<string | null>(null);
-  // --- END NEW STATE ---
 
   // --- MEMOIZED & CALLBACK FUNCTIONS ---
 
@@ -421,57 +229,53 @@ export function UsersManagement() {
   );
 
   // --- MEMOIZED FILTERED USERS ---
-  // This calculation only runs when its dependencies change
+  // Optimized filtering - exit early for better performance
   const filteredUsers = useMemo(() => {
-    // Use the debouncedSearchTerm here
-    const hasExactStaffIdMatch =
-      debouncedSearchTerm.trim() &&
-      users.some(
+    if (!users.length) return [];
+
+    const searchLower = debouncedSearchTerm.toLowerCase().trim();
+    const hasSearch = searchLower.length > 0;
+    const allFiltersDefault =
+      roleFilter === "all" &&
+      statusFilter === "all" &&
+      branchFilter === "all" &&
+      positionFilter === "all";
+
+    // Fast path: no filters and no search
+    if (!hasSearch && allFiltersDefault) {
+      return users;
+    }
+
+    // Pre-compute exact staff ID match if searching
+    let exactStaffIdMatch = false;
+    if (hasSearch) {
+      exactStaffIdMatch = users.some(
         (user: any) =>
-          (user.staffId || "").toLowerCase() ===
-          debouncedSearchTerm.toLowerCase().trim()
+          (user.staffId || "").toLowerCase() === searchLower
       );
+    }
 
     return users.filter((user: any) => {
-      const searchLower = debouncedSearchTerm.toLowerCase().trim();
+      // Fast filter checks first (these are cheaper)
+      if (roleFilter !== "all" && user.role !== roleFilter) return false;
+      if (statusFilter !== "all" && user.status !== statusFilter) return false;
+      if (branchFilter !== "all" && user.branch !== branchFilter) return false;
+      if (positionFilter !== "all" && (user.position || "") !== positionFilter)
+        return false;
+
+      // Search check (more expensive, do last)
+      if (!hasSearch) return true;
+
       const userStaffId = (user.staffId || "").toLowerCase();
+      
+      if (exactStaffIdMatch && userStaffId === searchLower) return true;
 
-      const matchesRole = roleFilter === "all" || user.role === roleFilter;
-      const matchesStatus =
-        statusFilter === "all" || user.status === statusFilter;
-      const matchesBranch =
-        branchFilter === "all" || user.branch === branchFilter;
-      const userPosition = user.position || "";
-      const matchesPosition =
-        positionFilter === "all" || userPosition === positionFilter;
-
-      if (!debouncedSearchTerm.trim()) {
-        return matchesRole && matchesStatus && matchesBranch && matchesPosition;
-      }
-
-      if (hasExactStaffIdMatch) {
-        return (
-          userStaffId === searchLower &&
-          matchesRole &&
-          matchesStatus &&
-          matchesBranch &&
-          matchesPosition
-        );
-      }
-
-      const matchesSearch =
+      return (
         (user.name || "").toLowerCase().includes(searchLower) ||
         (user.email || "").toLowerCase().includes(searchLower) ||
         (user.phone || "").toLowerCase().includes(searchLower) ||
         userStaffId.includes(searchLower) ||
-        (user.emiratesId || "").toLowerCase().includes(searchLower);
-
-      return (
-        matchesSearch &&
-        matchesRole &&
-        matchesStatus &&
-        matchesBranch &&
-        matchesPosition
+        (user.emiratesId || "").toLowerCase().includes(searchLower)
       );
     });
   }, [
@@ -542,49 +346,75 @@ export function UsersManagement() {
   }, []);
 
   const handleDeleteUser = useCallback(
-    (userId: string) => {
+    async (userId: string) => {
       if (confirm("Are you sure you want to delete this user?")) {
-        dispatch(deleteUser(userId) as any);
+        try {
+          await dispatch(deleteUser(userId) as any);
+          showSuccess("User deleted successfully!");
+          // Refresh the users list after deleting
+          dispatch(fetchUsersMinimal() as any);
+        } catch (error) {
+          console.error("Failed to delete user:", error);
+          showError("Failed to delete user. Please try again.");
+        }
       }
     },
     [dispatch]
   );
 
   const handleSubmit = useCallback(
-    (e: React.FormEvent) => {
+    async (e: React.FormEvent) => {
       e.preventDefault();
 
-      const backendData: any = {
-        firstName: formData.firstName,
-        lastName: formData.lastName,
-        email: formData.email,
-        phone: formData.phone,
-        emiratesId: formData.emiratesId,
-        gender: formData.gender,
-        password: formData.password,
-        staffId: formData.staffId,
-        positionId: positions.find((p: any) => p.Name === formData.position)
-          ?.PositionId,
-        isActive: formData.status === "active",
-      };
+      try {
+        const backendData: any = {
+          firstName: formData.firstName,
+          lastName: formData.lastName,
+          email: formData.email,
+          phone: formData.phone,
+          emiratesId: formData.emiratesId,
+          gender: formData.gender,
+          password: formData.password,
+          staffId: formData.staffId,
+          positionId: positions.find((p: any) => p.Name === formData.position)
+            ?.PositionId,
+          isActive: formData.status === "active",
+        };
 
-      const selectedRole = roles.find((r: any) => r.Name === formData.role);
-      if (selectedRole) {
-        backendData.roleRankId = selectedRole.RoleRankId;
+        const selectedRole = roles.find((r: any) => r.Name === formData.role);
+        if (selectedRole) {
+          backendData.roleRankId = selectedRole.RoleRankId;
+        }
+
+        if (editingUser) {
+          await dispatch(updateUser(editingUser.id, backendData) as any);
+          showSuccess(
+            `User "${formData.firstName} ${formData.lastName}" updated successfully!`
+          );
+        } else {
+          await dispatch(createUser(backendData) as any);
+          showSuccess(
+            `User "${formData.firstName} ${formData.lastName}" created successfully!`
+          );
+        }
+
+        setIsDialogOpen(false);
+        // Refresh the users list after creating/updating
+        dispatch(fetchUsersMinimal() as any);
+      } catch (error: any) {
+        console.error("Failed to save user:", error);
+        const errorMessage =
+          error?.response?.data?.message ||
+          error?.message ||
+          "Failed to save user. Please try again.";
+        showError(errorMessage);
       }
-
-      if (editingUser) {
-        dispatch(updateUser(editingUser.id, backendData) as any);
-      } else {
-        dispatch(createUser(backendData) as any);
-      }
-
-      setIsDialogOpen(false);
     },
     [dispatch, formData, editingUser, positions, roles]
   );
 
-  const getRoleColor = (role: string) => {
+  // Memoize helper functions
+  const getRoleColor = useCallback((role: string) => {
     switch (role) {
       case "admin":
       case "management":
@@ -599,21 +429,22 @@ export function UsersManagement() {
       default:
         return "outline";
     }
-  };
+  }, []);
 
-  const getRankColor = (rank: number) => {
+  const getRankColor = useCallback((rank: number) => {
     if (rank <= 2) return "default";
     if (rank <= 4) return "secondary";
     if (rank <= 6) return "outline";
     return "outline";
-  };
+  }, []);
 
-  const formatDate = (dateString: string) => {
+  // Memoize format functions to avoid recreating them on every render
+  const formatDate = useCallback((dateString: string) => {
     if (dateString === "Never") return "Never";
     return new Date(dateString).toLocaleDateString();
-  };
+  }, []);
 
-  const formatLastLogin = (dateString: string) => {
+  const formatLastLogin = useCallback((dateString: string) => {
     if (dateString === "Never") return "Never";
     const date = new Date(dateString);
     const now = new Date();
@@ -627,7 +458,7 @@ export function UsersManagement() {
       const diffDays = Math.floor(diffHours / 24);
       return `${diffDays}d ago`;
     }
-  };
+  }, []);
 
   // --- VIRTUALIZATION SETUP ---
   // 1. Create a ref for the scrolling container
@@ -824,7 +655,7 @@ export function UsersManagement() {
               overflowY: "auto",
             }}
           >
-            <table className="w-full">
+            <table className="w-full" style={{ tableLayout: "fixed" }}>
               <thead
                 className="border-b"
                 style={{
@@ -835,15 +666,33 @@ export function UsersManagement() {
                 }}
               >
                 <tr>
-                  <th className="text-left p-4 font-medium">User</th>
-                  <th className="text-left p-4 font-medium">Role</th>
-                  <th className="text-left p-4 font-medium">Position</th>
-                  <th className="text-left p-4 font-medium">Rank</th>
-                  <th className="text-left p-4 font-medium">Branch</th>
-                  <th className="text-left p-4 font-medium">Status</th>
-                  <th className="text-left p-4 font-medium">Last Login</th>
-                  <th className="text-left p-4 font-medium">Created</th>
-                  <th className="text-left p-4 font-medium">Actions</th>
+                  <th className="text-left p-4 font-medium" style={{ width: "20%" }}>
+                    User
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "10%" }}>
+                    Role
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "12%" }}>
+                    Position
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "6%" }}>
+                    Rank
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "12%" }}>
+                    Branch
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "8%" }}>
+                    Status
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "10%" }}>
+                    Last Login
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "10%" }}>
+                    Created
+                  </th>
+                  <th className="text-left p-4 font-medium" style={{ width: "12%" }}>
+                    Actions
+                  </th>
                 </tr>
               </thead>
               {/* 4. This tbody is positioned relatively and given a total height */}
@@ -872,76 +721,75 @@ export function UsersManagement() {
                       className="border-b hover:bg-muted/50"
                     >
                       {/* --- All your original <td> cells go here --- */}
-                      <td className="p-4">
-                        <div>
-                          <div className="font-medium">{user.name}</div>
-                          <div className="text-sm text-muted-foreground">
+                      <td className="p-4" style={{ width: "20%" }}>
+                        <div className="min-w-0">
+                          <div className="font-medium truncate">{user.name}</div>
+                          <div className="text-sm text-muted-foreground truncate">
                             {user.email}
                           </div>
-                          <div className="text-xs text-muted-foreground">
+                          <div className="text-xs text-muted-foreground truncate">
                             ID: {user.staffId} • {user.phone}
                           </div>
                         </div>
                       </td>
-                      <td className="p-4">
+                      <td className="p-4" style={{ width: "10%" }}>
                         <Badge
                           variant={getRoleColor(user.role)}
-                          className="text-xs"
+                          className="text-xs whitespace-nowrap"
                         >
                           {user.role.replace("_", " ")}
                         </Badge>
                       </td>
-                      <td className="p-4 text-sm">{user.position}</td>
-                      <td className="p-4">
+                      <td className="p-4 text-sm" style={{ width: "12%" }}>
+                        <div className="truncate">{user.position || "N/A"}</div>
+                      </td>
+                      <td className="p-4" style={{ width: "6%" }}>
                         <Badge
                           variant={getRankColor(user.rank)}
-                          className="text-xs"
+                          className="text-xs whitespace-nowrap"
                         >
                           {user.rank}
                         </Badge>
                       </td>
-                      <td className="p-4 text-sm">{user.branch}</td>
-                      <td className="p-4">
+                      <td className="p-4 text-sm" style={{ width: "12%" }}>
+                        <div className="truncate">{user.branch || "N/A"}</div>
+                      </td>
+                      <td className="p-4" style={{ width: "8%" }}>
                         <Badge
                           variant={
                             user.status === "active" ? "default" : "secondary"
                           }
-                          className="text-xs"
+                          className="text-xs whitespace-nowrap"
                         >
                           {user.status}
                         </Badge>
                       </td>
-                      <td className="p-4 text-sm">
-                        {formatLastLogin(user.lastLogin)}
+                      <td className="p-4 text-sm" style={{ width: "10%" }}>
+                        <div className="whitespace-nowrap">
+                          {formatLastLogin(user.lastLogin)}
+                        </div>
                       </td>
-                      <td className="p-4 text-sm">
-                        {formatDate(user.createdAt)}
+                      <td className="p-4 text-sm" style={{ width: "10%" }}>
+                        <div className="whitespace-nowrap">
+                          {formatDate(user.createdAt)}
+                        </div>
                       </td>
-                      <td className="p-4">
-                        <div className="flex gap-2">
+                      <td className="p-4" style={{ width: "12%" }}>
+                        <div className="flex gap-2 flex-wrap">
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleEditUser(user)}
+                            className="flex-shrink-0"
                           >
                             <Edit className="h-3 w-3 mr-1" />
                             Edit
-                          </Button>
-
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => handleResetPasswordClick(user)} // Pass the user object
-                            className="text-orange-600 hover:text-orange-700 hover:bg-orange-50" // Example styling
-                          >
-                            <Lock className="h-3 w-3 mr-1" />
-                            Reset Pass
                           </Button>
                           <Button
                             variant="outline"
                             size="sm"
                             onClick={() => handleDeleteUser(user.id)}
-                            className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                            className="text-red-600 hover:text-red-700 hover:bg-red-50 flex-shrink-0"
                           >
                             <Trash2 className="h-3 w-3 mr-1" />
                             Delete
@@ -1174,22 +1022,6 @@ export function UsersManagement() {
         </DialogContent>
       </Dialog>
 
-      {/* --- NEW Reset Password Modal Rendering --- */}
-      {showResetModal && resettingUser && (
-        <ResetPasswordModal
-          userName={resettingUser.name} // Pass the name
-          tempPassword={tempPassword}
-          isLoading={resetLoading}
-          error={resetError}
-          onClose={() => {
-            setShowResetModal(false);
-            setResettingUser(null);
-            setTempPassword(null);
-            setResetError(null);
-          }}
-        />
-      )}
-      {/* --- END NEW Modal Rendering --- */}
     </div>
   );
 }

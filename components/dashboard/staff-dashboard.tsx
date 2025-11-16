@@ -122,6 +122,21 @@ export const StaffDashboard: React.FC = () => {
         const completionRate =
           totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
 
+        // Fetch current streak (by tasks)
+        let currentStreak = 0;
+        try {
+          const streakResp = await api.get(`/metrics/current-streak`, {
+            params: { type: "tasks" },
+          });
+          currentStreak =
+            typeof streakResp.data?.streak === "number"
+              ? streakResp.data.streak
+              : 0;
+        } catch (e) {
+          console.warn("Failed to fetch current streak, defaulting to 0", e);
+          currentStreak = 0;
+        }
+
         setKpis({
           MyTasks: totalTasks,
           CompletedTasks: completedTasks,
@@ -130,7 +145,7 @@ export const StaffDashboard: React.FC = () => {
           CompletionRate: completionRate,
           OnTimeRate: completionRate,
           AvgChecklistCompletion: completionRate,
-          CurrentStreak: 5,
+          CurrentStreak: currentStreak,
           WeeklyTarget: 20,
         });
         setTasks(
@@ -144,6 +159,117 @@ export const StaffDashboard: React.FC = () => {
             ChecklistCompletion: task.ChecklistPercentage || 0,
           }))
         );
+
+        // Calculate daily task completion data from real tasks
+        const calculateDailyTaskData = (tasks: any[]) => {
+          const now = new Date();
+          now.setHours(0, 0, 0, 0); // Normalize to start of day
+          const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+          // Helper function to get date key in YYYY-MM-DD format (local timezone)
+          const getDateKey = (date: Date): string => {
+            const year = date.getFullYear();
+            const month = String(date.getMonth() + 1).padStart(2, "0");
+            const day = String(date.getDate()).padStart(2, "0");
+            return `${year}-${month}-${day}`;
+          };
+
+          // Initialize data for last 7 days using date keys
+          const dailyData: {
+            [key: string]: {
+              completed: number;
+              pending: number;
+              overdue: number;
+              dayName: string;
+            };
+          } = {};
+
+          // Get last 7 days starting from today
+          for (let i = 0; i < 7; i++) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            date.setHours(0, 0, 0, 0);
+            const dateKey = getDateKey(date);
+            const dayName = dayNames[date.getDay()];
+            dailyData[dateKey] = {
+              completed: 0,
+              pending: 0,
+              overdue: 0,
+              dayName,
+            };
+          }
+
+          tasks.forEach((task: any) => {
+            const taskDeadline = new Date(task.Deadline);
+            taskDeadline.setHours(0, 0, 0, 0);
+            const taskCreatedAt = new Date(task.CreatedAt || task.Deadline);
+            taskCreatedAt.setHours(0, 0, 0, 0);
+            const taskEndTime = task.EndTime ? new Date(task.EndTime) : null;
+            if (taskEndTime) {
+              taskEndTime.setHours(0, 0, 0, 0);
+            }
+
+            const isCompleted =
+              task.Status === "Completed" || task.Status === "Approved";
+            const isPending = ["Pending", "In Progress", "Submitted"].includes(
+              task.Status
+            );
+            const isOverdue = !isCompleted && taskDeadline < now;
+
+            // For completed tasks, use EndTime if available, otherwise use CreatedAt
+            if (isCompleted) {
+              const completionDate = taskEndTime || taskCreatedAt;
+              completionDate.setHours(0, 0, 0, 0);
+              const dateKey = getDateKey(completionDate);
+
+              if (dailyData[dateKey]) {
+                dailyData[dateKey].completed++;
+              }
+            } else if (isPending) {
+              // For pending tasks, count them on the day they were created (within last 7 days)
+              const dateKey = getDateKey(taskCreatedAt);
+
+              if (dailyData[dateKey]) {
+                dailyData[dateKey].pending++;
+              }
+            }
+
+            // For overdue tasks, count them on the deadline day (if within last 7 days)
+            if (isOverdue) {
+              const dateKey = getDateKey(taskDeadline);
+
+              if (dailyData[dateKey]) {
+                dailyData[dateKey].overdue++;
+              }
+            }
+          });
+
+          // Convert to array format expected by the chart, starting from 6 days ago to today
+          const chartDataArray = [];
+          for (let i = 6; i >= 0; i--) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            date.setHours(0, 0, 0, 0);
+            const dateKey = getDateKey(date);
+            const dayData = dailyData[dateKey] || {
+              completed: 0,
+              pending: 0,
+              overdue: 0,
+              dayName: dayNames[date.getDay()],
+            };
+            chartDataArray.push({
+              name: dayData.dayName,
+              completed: dayData.completed,
+              pending: dayData.pending,
+              overdue: dayData.overdue,
+            });
+          }
+
+          return chartDataArray;
+        };
+
+        const realChartData = calculateDailyTaskData(userTasks);
+        setChartData(realChartData);
       } catch (taskError) {
         console.error(
           "⚠️ Staff tasks API failed, using fallback demo data:",
@@ -183,16 +309,18 @@ export const StaffDashboard: React.FC = () => {
             ChecklistCompletion: 80,
           },
         ]);
+
+        // Use fallback demo chart data when API fails
+        setChartData([
+          { name: "Mon", completed: 4, pending: 1, overdue: 0 },
+          { name: "Tue", completed: 3, pending: 2, overdue: 0 },
+          { name: "Wed", completed: 5, pending: 1, overdue: 1 },
+          { name: "Thu", completed: 3, pending: 1, overdue: 0 },
+          { name: "Fri", completed: 4, pending: 2, overdue: 0 },
+          { name: "Sat", completed: 2, pending: 1, overdue: 0 },
+          { name: "Sun", completed: 1, pending: 1, overdue: 0 },
+        ]);
       }
-      setChartData([
-        { name: "Mon", completed: 4, pending: 1, overdue: 0 },
-        { name: "Tue", completed: 3, pending: 2, overdue: 0 },
-        { name: "Wed", completed: 5, pending: 1, overdue: 1 },
-        { name: "Thu", completed: 3, pending: 1, overdue: 0 },
-        { name: "Fri", completed: 4, pending: 2, overdue: 0 },
-        { name: "Sat", completed: 2, pending: 1, overdue: 0 },
-        { name: "Sun", completed: 1, pending: 1, overdue: 0 },
-      ]);
       setLastUpdated(new Date());
     } catch (err) {
       setError(

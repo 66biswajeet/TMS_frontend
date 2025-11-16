@@ -27,7 +27,7 @@ export interface NavItem {
 export const navigationConfig: NavItem[] = [
   {
     label: "Dashboard",
-    href: "/dashboard/management",
+    href: "/dashboard",
     icon: HomeIcon,
     roles: [
       "staff",
@@ -143,6 +143,34 @@ export const navigationConfig: NavItem[] = [
   },
 ];
 
+export function getDashboardRoute(rawRole?: string | null) {
+  const role =
+    rawRole ??
+    (typeof window !== "undefined"
+      ? localStorage.getItem("userRole") ?? localStorage.getItem("role")
+      : null);
+
+  switch (role) {
+    case "management":
+      return "/dashboard/management";
+    case "auditor":
+      return "/dashboard/auditor";
+    case "area_manager":
+    case "area-manager":
+      return "/dashboard/area";
+    case "branch_manager":
+    case "branch-manager":
+      return "/dashboard/branch";
+    case "staff":
+      return "/dashboard/staff";
+    default:
+      // fallback for no role or unknown role
+      return typeof window !== "undefined" && localStorage.getItem("token")
+        ? "/dashboard/management"
+        : "/login";
+  }
+}
+
 // export const getUserNavigationItems = (userRole: string): NavItem[] => {
 //   return navigationConfig
 //     .filter(item => item.roles.includes(userRole))
@@ -165,8 +193,13 @@ export const getUserNavigationItems = (user: AppUser): NavItem[] => {
       );
 
       // Return the item with its children filtered
+      // Compute a dynamic href for the Dashboard item so it routes per-role
+      const href =
+        item.label === "Dashboard" ? getDashboardRoute(user.role) : item.href;
+
       return {
         ...item,
+        href,
         children: visibleChildren,
       };
     })
