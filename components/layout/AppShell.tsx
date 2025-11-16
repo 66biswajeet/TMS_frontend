@@ -126,8 +126,6 @@ export function AppShell({ children, className }: AppShellProps) {
     setIsClient(true);
   }, []);
 
-  console.log("❤️USER OBJECT FOR NAV:", auth.user);
-
   /* <-- 2. REMOVED useEffect block that set userRole --> */
 
   const handleSidebarToggle = () => {
